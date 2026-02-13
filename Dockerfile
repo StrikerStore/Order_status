@@ -1,14 +1,14 @@
-# Use OpenJDK 17
-FROM eclipse-temurin:17-jre
+# Use official Java image
+FROM eclipse-temurin:17-jdk
 
-# Set working directory
 WORKDIR /app
 
-# Copy the JAR file (built by Railway or locally)
-COPY target/order-tracking-service-*.jar app.jar
+# Copy entire project
+COPY . .
 
-# Expose port (Railway will set PORT env var)
-EXPOSE 8080
+# Build the project
+RUN ./mvnw clean package -DskipTests
 
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Run the jar
+ENTRYPOINT ["java", "-jar", "target/Order_status-0.0.1-SNAPSHOT.jar"]
+
