@@ -81,7 +81,9 @@ public class OrderCreatedFlowService {
         request.setVariables(variables);
 
         // Send template message via Botspace
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, orderName);
+        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, String.valueOf(webhook.getId()),
+                "sent_orderCreated",
+                "failed_orderCreated");
 
         if (sent) {
             log.info("✅ Order created notification sent successfully for order: {} to phone: {}",

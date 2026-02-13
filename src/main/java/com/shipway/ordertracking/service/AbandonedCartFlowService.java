@@ -94,7 +94,8 @@ public class AbandonedCartFlowService {
 
             // Send template message via Botspace
             // Send template message via Botspace
-            boolean sent = botspaceService.sendTemplateMessage(accountCode, request, cartToken);
+            boolean sent = botspaceService.sendTemplateMessage(accountCode, request, cartToken,
+                    "sent_abandonedCart", "failed_abandonedCart");
 
             if (sent) {
                 log.info("✅ Abandoned cart notification sent successfully for phone: {} (account: {})",

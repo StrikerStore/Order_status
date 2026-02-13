@@ -337,7 +337,8 @@ public class DeliveredFlowService {
             }
         }
 
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, orderId);
+        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, orderId, "sent_delivered",
+                "failed_delivered");
         if (sent) {
             log.info("✅ Delivered notification sent successfully for order: {} to phone: {}", orderId, formattedPhone);
         } else {

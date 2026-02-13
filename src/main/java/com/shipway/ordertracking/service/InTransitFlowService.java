@@ -252,7 +252,8 @@ public class InTransitFlowService {
             request.setCards(cards);
         }
 
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, order.getOrderId());
+        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, order.getOrderId(), "sent_inTransit",
+                "failed_inTransit");
         if (sent) {
             log.info("✅ In transit notification sent successfully for order: {} to phone: {}", order.getOrderId(),
                     formattedPhone);

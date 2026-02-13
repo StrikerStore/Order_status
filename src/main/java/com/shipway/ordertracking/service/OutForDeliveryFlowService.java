@@ -252,7 +252,8 @@ public class OutForDeliveryFlowService {
             request.setCards(cards);
         }
 
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, order.getOrderId());
+        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, order.getOrderId(),
+                "sent_outForDelivery", "failed_outForDelivery");
         if (sent) {
             log.info("✅ Out for delivery notification sent successfully for order: {} to phone: {}", order.getOrderId(),
                     formattedPhone);
@@ -302,13 +303,14 @@ public class OutForDeliveryFlowService {
         String firstName = order.getShippingFirstname() != null ? order.getShippingFirstname() : "";
         variables.add(firstName);
 
-        // Variable 2: Order ID/Name
+        // Variable 2: Number of products
+        String numberOfProducts = order.getNumberOfProduct() != null ? order.getNumberOfProduct().toString() : "0";
+        numberOfProducts = numberOfProducts + " item";
+        variables.add(numberOfProducts);
+
+        // Variable 3: Order ID/Name
         String orderId = order.getOrderId() != null ? order.getOrderId() : "";
         variables.add(orderId);
-
-        // Variable 3: Number of products
-        String numberOfProducts = order.getNumberOfProduct() != null ? order.getNumberOfProduct().toString() : "0";
-        variables.add(numberOfProducts);
 
         // Variable 4: Tracking URL
         String trackingUrl = buildTrackingUrl(order);

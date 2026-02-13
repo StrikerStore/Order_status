@@ -44,7 +44,7 @@ public class BotspaceService {
 
     /**
      * Send template message to customer via Botspace and track it in Claimio
-     * backend
+     * backend using default status "sent"/"failed"
      * 
      * @param accountCode Account code to identify which Botspace account to use
      * @param request     BotspaceMessageRequest with templateId and variables
@@ -52,10 +52,26 @@ public class BotspaceService {
      * @return true if message sent successfully, false otherwise
      */
     public boolean sendTemplateMessage(String accountCode, BotspaceMessageRequest request, String orderId) {
+        return sendTemplateMessage(accountCode, request, orderId, "sent", "failed");
+    }
+
+    /**
+     * Send template message to customer via Botspace and track it in Claimio
+     * backend using custom status strings
+     * 
+     * @param accountCode   Account code to identify which Botspace account to use
+     * @param request       BotspaceMessageRequest with templateId and variables
+     * @param orderId       Order ID for tracking purposes
+     * @param successStatus Status string to send if message sent successfully
+     * @param failureStatus Status string to send if message failed
+     * @return true if message sent successfully, false otherwise
+     */
+    public boolean sendTemplateMessage(String accountCode, BotspaceMessageRequest request, String orderId,
+            String successStatus, String failureStatus) {
         boolean sent = sendTemplateMessage(accountCode, request);
 
         if (orderId != null && !orderId.isEmpty()) {
-            String status = sent ? "sent" : "failed";
+            String status = sent ? successStatus : failureStatus;
             // Run tracking update asynchronously to not block the main flow?
             // For now, running synchronously but safely caught to not affect return value
             try {
