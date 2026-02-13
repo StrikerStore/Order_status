@@ -32,38 +32,29 @@ public class WebhookProcessingService {
     /**
      * Process status update webhook and route to appropriate flow service
      */
-    public Map<String, Object> processStatusUpdate(StatusUpdateWebhook webhook) {
+    /**
+     * Process status update webhook for a single order and route to appropriate
+     * flow service
+     */
+    public Map<String, Object> processStatusUpdate(StatusUpdateWebhook.OrderStatus order) {
         Map<String, Object> result = new HashMap<>();
-        int successCount = 0;
-        int failureCount = 0;
 
-        if (webhook.getBody() == null || webhook.getBody().getOrders() == null) {
-            log.warn("Webhook body or orders array is null");
+        if (order == null) {
             result.put("success", false);
-            result.put("message", "Invalid webhook payload: missing body or orders");
+            result.put("message", "Invalid order: null");
             return result;
         }
 
-        log.info("Processing status update webhook with {} orders", webhook.getBody().getOrders().size());
-
-        for (StatusUpdateWebhook.OrderStatus order : webhook.getBody().getOrders()) {
-            try {
-                boolean processed = routeToFlowService(order);
-                if (processed) {
-                    successCount++;
-                } else {
-                    failureCount++;
-                }
-            } catch (Exception e) {
-                log.error("Error processing order {}: {}", order.getOrderId(), e.getMessage(), e);
-                failureCount++;
-            }
+        try {
+            boolean processed = routeToFlowService(order);
+            result.put("success", processed);
+            result.put("message", processed ? "Order processed successfully" : "Order processing skipped or failed");
+            result.put("orderId", order.getOrderId());
+        } catch (Exception e) {
+            log.error("Error processing order {}: {}", order.getOrderId(), e.getMessage(), e);
+            result.put("success", false);
+            result.put("message", "Error processing order: " + e.getMessage());
         }
-
-        result.put("success", failureCount == 0);
-        result.put("processed", successCount + failureCount);
-        result.put("successCount", successCount);
-        result.put("failureCount", failureCount);
 
         return result;
     }
@@ -83,19 +74,21 @@ public class WebhookProcessingService {
             return false;
         }
 
-        // Normalize status for comparison (handle both space-separated and underscore formats)
+        // Normalize status for comparison (handle both space-separated and underscore
+        // formats)
         String normalizedStatus = status != null ? status.trim().toUpperCase().replace("_", " ") : "";
 
         // Route based on current_shipment_status
-        // Based on sample JSON: "Out for Delivery", "Delivered", "In Transit", "OUT_FOR_PICKUP", etc.
+        // Based on sample JSON: "Out for Delivery", "Delivered", "In Transit",
+        // "OUT_FOR_PICKUP", etc.
         if (normalizedStatus.contains("OUT FOR DELIVERY")) {
             return outForDeliveryFlowService.processOutForDelivery(order);
         } else if (normalizedStatus.equals("DELIVERED")) {
             return deliveredFlowService.processDelivered(order);
-        } else if (normalizedStatus.contains("IN TRANSIT")  || normalizedStatus.contains("PICKED UP")) {
+        } else if (normalizedStatus.contains("IN TRANSIT") || normalizedStatus.contains("PICKED UP")) {
             return inTransitFlowService.processInTransit(order);
         } else if (normalizedStatus.contains("SHIPMENT BOOKED") || normalizedStatus.contains("OUT FOR PICKUP")
-        		 || normalizedStatus.contains("SHPFR1") || normalizedStatus.contains("SHIPPED")) {
+                || normalizedStatus.contains("SHPFR1") || normalizedStatus.contains("SHIPPED")) {
             // Route to shopify fulfillment flow for shipped/fulfilled orders
             return shopifyFulfillmentFlowService.processShopifyFulfillment(order);
         } else if (normalizedStatus.contains("RTO") || normalizedStatus.contains("RETURN TO ORIGIN")) {

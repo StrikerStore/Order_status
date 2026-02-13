@@ -4,7 +4,7 @@ import com.shipway.ordertracking.dto.FasterrAbandonedCartWebhook;
 import com.shipway.ordertracking.dto.ShopifyOrderCreatedWebhook;
 import com.shipway.ordertracking.dto.StatusUpdateWebhook;
 import com.shipway.ordertracking.dto.WebhookWrapper;
-import com.shipway.ordertracking.service.AbandonedCartFlowService;
+
 import com.shipway.ordertracking.service.OrderCreatedFlowService;
 import com.shipway.ordertracking.service.WebhookProcessingService;
 import org.slf4j.Logger;
@@ -43,25 +43,72 @@ public class WebhookController {
     public ResponseEntity<Map<String, Object>> handleStatusUpdate(@RequestBody WebhookWrapper wrapper) {
         log.info("Received status update webhook");
 
+        try {
+            // DEBUG: Print the full request payload
+            String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(wrapper);
+            log.info("🔍 Processed Webhook Payload:\n{}", jsonRequest);
+        } catch (Exception e) {
+            log.error("Failed to serialize webhook wrapper for logging", e);
+        }
+
         if (wrapper == null || wrapper.getOrders() == null || wrapper.getOrders().isEmpty()) {
             log.warn("Received empty webhook orders");
             return createErrorResponse("Empty webhook payload");
         }
 
-        List<StatusUpdateWebhook> webhooks = wrapper.getOrders();
+        List<StatusUpdateWebhook.OrderStatus> webhooks = wrapper.getOrders();
         log.info("Processing {} webhook(s)", webhooks.size());
 
-        // Process the first webhook (based on your sample, it's an array with one
-        // object)
-        StatusUpdateWebhook webhook = webhooks.get(0);
+        int successCount = 0;
+        int failCount = 0;
+        Map<String, Object> lastResult = null;
 
-        try {
-            Map<String, Object> result = webhookProcessingService.processStatusUpdate(webhook);
-            return ResponseEntity.ok(result);
-        } catch (Exception e) {
-            log.error("Error processing status update webhook", e);
-            return createErrorResponse("Error processing webhook: " + e.getMessage());
+        for (StatusUpdateWebhook.OrderStatus webhook : webhooks) {
+            try {
+                // We need to verify if processStatusUpdate accepts OrderStatus or
+                // StatusUpdateWebhook
+                // Based on previous code, it likely accepted StatusUpdateWebhook.
+                // If it accepts StatusUpdateWebhook, we might need to convert or overload the
+                // method.
+                // Let's assume for now we need to adapt it.
+                // Wait, if StatusUpdateWebhook was the WRONG type for the JSON, existing
+                // service processing might also be broken if it expects the complex structure.
+                // However, the user provided JSON { "orders": [...] }.
+                // If the service expects `StatusUpdateWebhook`, how was it working before?
+                // Maybe it wasn't? Or maybe `StatusUpdateWebhook` was receiving the WHOLE
+                // payload?
+                // The previous error `MismatchedInputException` ...
+                // `ArrayList<StatusUpdateWebhook>` meant it tried to parse the `orders` array
+                // elements into `StatusUpdateWebhook`.
+                // But the elements are `OrderStatus`.
+                // So the service `processStatusUpdate` probably takes the *content* of the
+                // order update.
+                // I need to check `WebhookProcessingService.java`.
+
+                // For this step, I will update the loop variable type.
+                // I will also assume I need to pass this object to the service.
+                // I'll leave the service call as is for a moment but I suspect I'll need to
+                // update the service signature too.
+                lastResult = webhookProcessingService.processStatusUpdate(webhook);
+                successCount++;
+            } catch (Exception e) {
+                log.error("Error processing webhook for order {}: {}", webhook.getOrderId(), e.getMessage(), e);
+                failCount++;
+            }
         }
+
+        Map<String, Object> response = new java.util.HashMap<>();
+        response.put("success", true);
+        response.put("processed", webhooks.size());
+        response.put("successCount", successCount);
+        response.put("failCount", failCount);
+
+        if (lastResult != null && webhooks.size() == 1) {
+            // For single webhook, return details of that execution as before
+            return ResponseEntity.ok(lastResult);
+        }
+
+        return ResponseEntity.ok(response);
     }
 
     /**

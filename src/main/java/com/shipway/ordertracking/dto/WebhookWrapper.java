@@ -9,7 +9,7 @@ public class WebhookWrapper {
     private String event;
 
     @JsonProperty("orders")
-    private List<StatusUpdateWebhook> orders;
+    private List<StatusUpdateWebhook.OrderStatus> orders;
 
     public String getTimestamp() {
         return timestamp;
@@ -27,11 +27,11 @@ public class WebhookWrapper {
         this.event = event;
     }
 
-    public List<StatusUpdateWebhook> getOrders() {
+    public List<StatusUpdateWebhook.OrderStatus> getOrders() {
         return orders;
     }
 
-    public void setOrders(List<StatusUpdateWebhook> orders) {
+    public void setOrders(List<StatusUpdateWebhook.OrderStatus> orders) {
         this.orders = orders;
     }
 }
