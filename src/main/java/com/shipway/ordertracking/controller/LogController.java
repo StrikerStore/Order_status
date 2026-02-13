@@ -13,9 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -77,10 +75,13 @@ public class LogController {
             File logFile = new File(logFilePath);
             File logDir = logFile.getParentFile();
 
+            // Handle case where log directory doesn't exist yet
             if (logDir == null || !logDir.exists()) {
-                return ResponseEntity.ok(Map.of(
-                        "files", Collections.emptyList(),
-                        "directory", logFilePath));
+                Map<String, Object> response = new HashMap<>();
+                response.put("directory", logDir != null ? logDir.getAbsolutePath() : "unknown");
+                response.put("totalFiles", 0);
+                response.put("files", Collections.emptyList());
+                return ResponseEntity.ok(response);
             }
 
             List<Map<String, Object>> files = new ArrayList<>();
@@ -130,6 +131,10 @@ public class LogController {
                 if (logDir == null) {
                     return ResponseEntity.notFound().build();
                 }
+                // Security check to prevent directory traversal
+                if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+                    return ResponseEntity.badRequest().build();
+                }
                 logFile = new File(logDir, filename);
             }
 
@@ -153,16 +158,60 @@ public class LogController {
     }
 
     /**
-     * Read last N lines from a file
+     * Read last N lines from a file efficiently using RandomAccessFile
      */
     private List<String> readLastLines(File file, int lines) throws IOException {
-        Path path = Paths.get(file.getAbsolutePath());
-        List<String> allLines = Files.readAllLines(path);
+        List<String> result = new ArrayList<>();
 
-        int totalLines = allLines.size();
-        int startIndex = Math.max(0, totalLines - lines);
+        try (java.io.RandomAccessFile raf = new java.io.RandomAccessFile(file, "r")) {
+            long fileLength = raf.length();
+            long filePointer = fileLength - 1;
+            StringBuilder sb = new StringBuilder();
+            int linesRead = 0;
 
-        return allLines.subList(startIndex, totalLines);
+            // Iterate backwards from the end of the file
+            while (filePointer >= 0 && linesRead < lines) {
+                raf.seek(filePointer);
+                int readByte = raf.readByte();
+
+                if (readByte == 0xA) { // Line feed (\n)
+                    if (filePointer < fileLength - 1) {
+                        // We found a line, add it to the list
+                        // Note: We reverse the string builder because we read backwards
+                        result.add(sb.reverse().toString());
+                        sb.setLength(0);
+                        linesRead++;
+                    }
+                } else if (readByte == 0xD) { // Carriage return (\r)
+                    // Ignore, usually handled with \n
+                } else {
+                    sb.append((char) readByte);
+                }
+                filePointer--;
+            }
+
+            // Add the last remaining line (which is actually the first line we read)
+            if (sb.length() > 0 && linesRead < lines) {
+                result.add(sb.reverse().toString());
+            }
+        }
+
+        // The lines were added in reverse order (bottom to top), so we don't need to
+        // reverse the list
+        // if we want newest first. But usually logs are displayed oldest to newest or
+        // we might want them reverse.
+        // Let's keep them as detected (newest first) since we scanned from bottom.
+        // If the UI expects chronological order, we should reverse the list.
+        // Based on typical "tail" behavior, newest first (top of response) is often
+        // good for APIs,
+        // but let's check if the previous implementation did any sorting.
+        // Previous implementation: Files.readAllLines() -> all lines. subList ->
+        // chronological.
+        // So we should probably reverse this list to match chronological order (oldest
+        // -> newest).
+        Collections.reverse(result);
+
+        return result;
     }
 
     /**
