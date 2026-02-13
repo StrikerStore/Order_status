@@ -3,6 +3,7 @@ package com.shipway.ordertracking.controller;
 import com.shipway.ordertracking.dto.FasterrAbandonedCartWebhook;
 import com.shipway.ordertracking.dto.ShopifyOrderCreatedWebhook;
 import com.shipway.ordertracking.dto.StatusUpdateWebhook;
+import com.shipway.ordertracking.dto.WebhookWrapper;
 import com.shipway.ordertracking.service.AbandonedCartFlowService;
 import com.shipway.ordertracking.service.OrderCreatedFlowService;
 import com.shipway.ordertracking.service.WebhookProcessingService;
@@ -39,13 +40,16 @@ public class WebhookController {
             + ""
             + ""
             + "")
-    public ResponseEntity<Map<String, Object>> handleStatusUpdate(@RequestBody List<StatusUpdateWebhook> webhooks) {
-        log.info("Received status update webhook with {} webhook(s)", webhooks.size());
+    public ResponseEntity<Map<String, Object>> handleStatusUpdate(@RequestBody WebhookWrapper wrapper) {
+        log.info("Received status update webhook");
 
-        if (webhooks == null || webhooks.isEmpty()) {
-            log.warn("Received empty webhook array");
+        if (wrapper == null || wrapper.getOrders() == null || wrapper.getOrders().isEmpty()) {
+            log.warn("Received empty webhook orders");
             return createErrorResponse("Empty webhook payload");
         }
+
+        List<StatusUpdateWebhook> webhooks = wrapper.getOrders();
+        log.info("Processing {} webhook(s)", webhooks.size());
 
         // Process the first webhook (based on your sample, it's an array with one
         // object)
