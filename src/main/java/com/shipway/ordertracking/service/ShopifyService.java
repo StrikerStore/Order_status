@@ -1324,7 +1324,7 @@ public class ShopifyService {
             String mutation = "mutation FulfillmentCreate($fulfillment: FulfillmentInput!) { fulfillmentCreate(fulfillment: $fulfillment) { fulfillment { id status createdAt trackingInfo { company number url } } userErrors { field message } } }";
 
             Map<String, Object> trackingInfo = new HashMap<>();
-            trackingInfo.put("company", ""); // Default empty as per request
+            trackingInfo.put("company", "Shipway"); // Default company name as per request
             if (trackingNumber != null) {
                 trackingInfo.put("number", trackingNumber);
             }
