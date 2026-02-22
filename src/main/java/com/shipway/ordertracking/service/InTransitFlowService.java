@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -32,13 +33,10 @@ public class InTransitFlowService {
     @Autowired
     private com.shipway.ordertracking.config.ShopifyProperties shopifyProperties;
 
-    @org.springframework.beans.factory.annotation.Value("${shopify.tags.inTransit:AAA_INTRANSIT}")
-    private String inTransitTag;
+    @Autowired
+    private CustomerMessageTrackingService customerMessageTrackingService;
 
-    // Tag to prevent duplicate processing
-    private String getInTransitTag() {
-        return inTransitTag;
-    }
+    private static final List<String> IN_TRANSIT_STATUSES = Arrays.asList("sent_inTransit", "failed_inTransit");
 
     /**
      * Process in transit webhook.
@@ -78,18 +76,21 @@ public class InTransitFlowService {
 
         String orderId = order.getOrderId();
 
-        // CHECK 2: Clone order detection - skip fulfillment and tags, send Botspace
-        // only
-        // Move this check BEFORE Shopify lookup to avoid "Order not found" errors for
-        // non-existent clone IDs
+        // CHECK 2: Database check - skip if already processed (sent or failed)
+        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, IN_TRANSIT_STATUSES)) {
+            log.info("Order {} already has in transit status in database, skipping in transit flow", orderId);
+            return true;
+        }
+
+        // CHECK 3: Clone order detection - skip fulfillment, send Botspace only (DB add happens in sendTemplateMessage)
         if (orderId != null && orderId.contains("_")) {
             log.info(
-                    "Order {} detected as clone (contains '_'), skipping Shopify lookup, fulfillment and tag operations. Sending Botspace notification only.",
+                    "Order {} detected as clone (contains '_'), skipping Shopify lookup and fulfillment. Sending Botspace.",
                     orderId);
             return sendInTransitBotspaceMessage(accountCode, order);
         }
 
-        // 1) GraphQL: get order with displayFulfillmentStatus and tags
+        // 1) GraphQL: get order with displayFulfillmentStatus
         Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(accountCode, orderId);
         if (orderNode == null) {
             log.warn("Order {} not found via GraphQL (account: {})", orderId, accountCode);
@@ -158,8 +159,8 @@ public class InTransitFlowService {
 
     private boolean processInTransitWhenFulfilled(String accountCode, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (hasTagInOrderNode(orderNode, getInTransitTag())) {
-            log.info("Order {} already has tag {}, skipping in transit flow", orderId, getInTransitTag());
+        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, IN_TRANSIT_STATUSES)) {
+            log.info("Order {} already has in transit status in database, skipping in transit flow", orderId);
             return true;
         }
 
@@ -191,43 +192,16 @@ public class InTransitFlowService {
             }
         }
 
-        if (!shopifyService.updateOrderTagsByOrderId(accountCode, numericOrderId, getInTransitTag(), orderId)) {
-            log.error("Failed to add tag {} for order {}, stopping flow", getInTransitTag(), orderId);
-            return false;
-        }
         return sendInTransitBotspaceMessage(accountCode, order);
     }
 
     private boolean proceedWithTagAndBotspace(String accountCode, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (hasTagInOrderData(orderDataWithTags, getInTransitTag())) {
-            log.info("Order {} already has tag {}, skipping in transit notification", orderId, getInTransitTag());
+        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, IN_TRANSIT_STATUSES)) {
+            log.info("Order {} already has in transit status in database, skipping in transit notification", orderId);
             return true;
-        }
-        if (!shopifyService.updateOrderTagsByOrderId(accountCode, numericOrderId, getInTransitTag(), orderId)) {
-            log.error("Failed to add tag {} for order {}, stopping flow", getInTransitTag(), orderId);
-            return false;
         }
         return sendInTransitBotspaceMessage(accountCode, order);
-    }
-
-    private static boolean hasTagInOrderNode(Map<String, Object> orderNode, String tag) {
-        return hasTagInOrderData(orderNode, tag);
-    }
-
-    private static boolean hasTagInOrderData(Map<String, Object> orderData, String tag) {
-        if (orderData == null || tag == null)
-            return false;
-        Object tagsObj = orderData.get("tags");
-        if (tagsObj instanceof List) {
-            for (Object t : (List<?>) tagsObj) {
-                if (tag.equalsIgnoreCase(String.valueOf(t)))
-                    return true;
-            }
-        }
-        if (tagsObj != null && tag.equalsIgnoreCase(String.valueOf(tagsObj)))
-            return true;
-        return false;
     }
 
     private boolean sendInTransitBotspaceMessage(String accountCode, StatusUpdateWebhook.OrderStatus order) {
@@ -390,34 +364,4 @@ public class InTransitFlowService {
         }
     }
 
-    /**
-     * Update Shopify order tags to add AAA_INTRANIST
-     */
-    private void updateShopifyTags(StatusUpdateWebhook.OrderStatus order, String tag) {
-        try {
-            String accountCode = order.getAccountCode();
-            String orderId = order.getOrderId();
-
-            if (orderId != null && !orderId.isEmpty()) {
-                if (accountCode == null || accountCode.isEmpty()) {
-                    log.warn("Cannot update Shopify tags: account code is missing for order: {}", orderId);
-                    return;
-                }
-
-                boolean updated = shopifyService.updateOrderTags(accountCode, orderId, tag);
-                if (updated) {
-                    log.info("✅ Shopify tags updated successfully for order: {} (account: {}), added tag: {}",
-                            orderId, accountCode, tag);
-                } else {
-                    log.warn("⚠️ Failed to update Shopify tags for order: {} (account: {})", orderId, accountCode);
-                }
-            } else {
-                log.warn("Cannot update Shopify tags: order ID is missing");
-            }
-        } catch (Exception e) {
-            log.error("❌ Error updating Shopify tags for order {}: {}",
-                    order.getOrderId(), e.getMessage(), e);
-            // Don't fail the entire flow if Shopify tag update fails
-        }
-    }
 }

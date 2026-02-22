@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -32,13 +33,10 @@ public class OutForDeliveryFlowService {
     @Autowired
     ShopifyProperties shopifyProperties;
 
-    @org.springframework.beans.factory.annotation.Value("${shopify.tags.outForDelivery:AAA_OUT_FOR_DELIVERY}")
-    private String outForDeliveryTag;
+    @Autowired
+    private CustomerMessageTrackingService customerMessageTrackingService;
 
-    // Tag to prevent duplicate processing
-    private String getOutForDeliveryTag() {
-        return outForDeliveryTag;
-    }
+    private static final List<String> OUT_FOR_DELIVERY_STATUSES = Arrays.asList("sent_outForDelivery", "failed_outForDelivery");
 
     /**
      * Process out for delivery webhook.
@@ -78,17 +76,21 @@ public class OutForDeliveryFlowService {
 
         String orderId = order.getOrderId();
 
-        // CHECK 2: Clone order detection - skip fulfillment and tags, send Botspace
-        // only
-        // Move this check BEFORE Shopify lookup
+        // CHECK 2: Database check - skip if already processed (sent or failed)
+        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, OUT_FOR_DELIVERY_STATUSES)) {
+            log.info("Order {} already has out for delivery status in database, skipping out for delivery flow", orderId);
+            return true;
+        }
+
+        // CHECK 3: Clone order detection - skip fulfillment, send Botspace only (DB add happens in sendTemplateMessage)
         if (orderId != null && orderId.contains("_")) {
             log.info(
-                    "Order {} detected as clone (contains '_'), skipping Shopify lookup, fulfillment and tag operations. Sending Botspace notification only.",
+                    "Order {} detected as clone (contains '_'), skipping Shopify lookup and fulfillment. Sending Botspace.",
                     orderId);
             return sendOutForDeliveryBotspaceMessage(accountCode, order);
         }
 
-        // 1) GraphQL: get order with displayFulfillmentStatus and tags
+        // 1) GraphQL: get order with displayFulfillmentStatus
         Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(accountCode, orderId);
         if (orderNode == null) {
             log.warn("Order {} not found via GraphQL (account: {})", orderId, accountCode);
@@ -157,8 +159,8 @@ public class OutForDeliveryFlowService {
 
     private boolean processOutForDeliveryWhenFulfilled(String accountCode, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (hasTagInOrderNode(orderNode, getOutForDeliveryTag())) {
-            log.info("Order {} already has tag {}, skipping out for delivery flow", orderId, getOutForDeliveryTag());
+        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, OUT_FOR_DELIVERY_STATUSES)) {
+            log.info("Order {} already has out for delivery status in database, skipping out for delivery flow", orderId);
             return true;
         }
 
@@ -190,44 +192,16 @@ public class OutForDeliveryFlowService {
             }
         }
 
-        if (!shopifyService.updateOrderTagsByOrderId(accountCode, numericOrderId, getOutForDeliveryTag(), orderId)) {
-            log.error("Failed to add tag {} for order {}, stopping flow", getOutForDeliveryTag(), orderId);
-            return false;
-        }
         return sendOutForDeliveryBotspaceMessage(accountCode, order);
     }
 
     private boolean proceedWithTagAndBotspace(String accountCode, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (hasTagInOrderData(orderDataWithTags, getOutForDeliveryTag())) {
-            log.info("Order {} already has tag {}, skipping out for delivery notification", orderId,
-                    getOutForDeliveryTag());
+        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, OUT_FOR_DELIVERY_STATUSES)) {
+            log.info("Order {} already has out for delivery status in database, skipping out for delivery notification", orderId);
             return true;
-        }
-        if (!shopifyService.updateOrderTagsByOrderId(accountCode, numericOrderId, getOutForDeliveryTag(), orderId)) {
-            log.error("Failed to add tag {} for order {}, stopping flow", getOutForDeliveryTag(), orderId);
-            return false;
         }
         return sendOutForDeliveryBotspaceMessage(accountCode, order);
-    }
-
-    private static boolean hasTagInOrderNode(Map<String, Object> orderNode, String tag) {
-        return hasTagInOrderData(orderNode, tag);
-    }
-
-    private static boolean hasTagInOrderData(Map<String, Object> orderData, String tag) {
-        if (orderData == null || tag == null)
-            return false;
-        Object tagsObj = orderData.get("tags");
-        if (tagsObj instanceof List) {
-            for (Object t : (List<?>) tagsObj) {
-                if (tag.equalsIgnoreCase(String.valueOf(t)))
-                    return true;
-            }
-        }
-        if (tagsObj != null && tag.equalsIgnoreCase(String.valueOf(tagsObj)))
-            return true;
-        return false;
     }
 
     private boolean sendOutForDeliveryBotspaceMessage(String accountCode, StatusUpdateWebhook.OrderStatus order) {

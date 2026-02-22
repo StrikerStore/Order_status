@@ -5,11 +5,9 @@ import com.shipway.ordertracking.config.BotspaceAccount;
 import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.dto.BotspaceMessageRequest;
 import com.shipway.ordertracking.dto.BotspaceMessageResponse;
-import com.shipway.ordertracking.dto.ClaimioTrackingRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
@@ -30,20 +28,14 @@ public class BotspaceService {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Value("${botspace.test.phone:}")
+    @org.springframework.beans.factory.annotation.Value("${botspace.test.phone:}")
     private String testPhoneNumber;
 
-    @Value("${backend.claimio.url:}")
-    private String claimioUrl;
-
-    @Value("${backend.claimio.username:}")
-    private String claimioUsername;
-
-    @Value("${backend.claimio.password:}")
-    private String claimioPassword;
+    @Autowired
+    private CustomerMessageTrackingService customerMessageTrackingService;
 
     /**
-     * Send template message to customer via Botspace and track it in Claimio
+     * Send template message to customer via Botspace and track status in database
      * backend using default status "sent"/"failed"
      * 
      * @param accountCode Account code to identify which Botspace account to use
@@ -56,75 +48,29 @@ public class BotspaceService {
     }
 
     /**
-     * Send template message to customer via Botspace and track it in Claimio
-     * backend using custom status strings
-     * 
+     * Send template message to customer via Botspace and track status in database
+     *
      * @param accountCode   Account code to identify which Botspace account to use
      * @param request       BotspaceMessageRequest with templateId and variables
      * @param orderId       Order ID for tracking purposes
-     * @param successStatus Status string to send if message sent successfully
-     * @param failureStatus Status string to send if message failed
+     * @param successStatus Status to store in DB if message sent successfully
+     * @param failureStatus Status to store in DB if message failed
      * @return true if message sent successfully, false otherwise
      */
     public boolean sendTemplateMessage(String accountCode, BotspaceMessageRequest request, String orderId,
             String successStatus, String failureStatus) {
         boolean sent = sendTemplateMessage(accountCode, request);
 
-        if (orderId != null && !orderId.isEmpty()) {
+        if (orderId != null && !orderId.isEmpty() && accountCode != null && !accountCode.isEmpty()) {
             String status = sent ? successStatus : failureStatus;
-            // Run tracking update asynchronously to not block the main flow?
-            // For now, running synchronously but safely caught to not affect return value
             try {
-                sendTrackingUpdate(orderId, accountCode, status);
+                customerMessageTrackingService.addStatus(orderId, accountCode, status);
             } catch (Exception e) {
-                log.error("Failed to send tracking update for order {}: {}", orderId, e.getMessage());
+                log.error("Failed to add message status for order {}: {}", orderId, e.getMessage());
             }
         }
 
         return sent;
-    }
-
-    /**
-     * Send tracking update to Claimio backend
-     */
-    private void sendTrackingUpdate(String orderId, String accountCode, String status) {
-        if (claimioUrl == null || claimioUrl.isEmpty()) {
-            log.warn("Claimio backend URL is not configured, skipping tracking update");
-            return;
-        }
-
-        try {
-            String apiUrl = claimioUrl + "/api/orders/message-tracking";
-
-            ClaimioTrackingRequest trackingRequest = new ClaimioTrackingRequest(orderId, accountCode, status);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBasicAuth(claimioUsername, claimioPassword);
-
-            HttpEntity<ClaimioTrackingRequest> entity = new HttpEntity<>(trackingRequest, headers);
-
-            log.debug("Sending tracking update for order {} to {}, status: {}", orderId, apiUrl, status);
-
-            try {
-                ResponseEntity<String> response = restTemplate.exchange(
-                        apiUrl,
-                        HttpMethod.POST,
-                        entity,
-                        String.class);
-
-                if (response.getStatusCode().is2xxSuccessful()) {
-                    log.info("✅ Tracking update sent for order {} (status: {})", orderId, status);
-                } else {
-                    log.warn("❌ Tracking update failed for order {}: Status {}", orderId, response.getStatusCode());
-                }
-            } catch (RestClientException e) {
-                log.error("❌ Error sending tracking update: {}", e.getMessage());
-            }
-
-        } catch (Exception e) {
-            log.error("Unexpected error in sendTrackingUpdate: {}", e.getMessage());
-        }
     }
 
     /**
