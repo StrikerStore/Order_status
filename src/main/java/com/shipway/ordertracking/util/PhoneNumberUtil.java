@@ -1,9 +1,14 @@
 package com.shipway.ordertracking.util;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Utility for formatting phone numbers for Botspace (e.g. Indian +91 format).
  */
 public final class PhoneNumberUtil {
+
+    private static final Logger log = LoggerFactory.getLogger(PhoneNumberUtil.class);
 
     private PhoneNumberUtil() {
     }
@@ -35,15 +40,14 @@ public final class PhoneNumberUtil {
             return "+91" + digits;
         }
 
-        // Already has 91 prefix: ensure +91 format
-        if ( (digits.startsWith("91") || digits.startsWith("+91")) && digits.length() > 10) {
+        // Already has 91 prefix (12 digits): ensure +91 format, must have 10 digits after 91
+        if (digits.startsWith("91") && digits.length() == 12) {
             return "+91" + digits.substring(2);
         }
 
-        // Log error with the phone number?
-        ("Invalid phone number: " + phone);
-        //Handle where this methosd sused
-        //return empty string
+        // Invalid length (e.g. 6 digits): Indian mobile must be 10 digits or 91+10
+        log.warn("Invalid phone number: length={} (expected 10 or 12 digits with 91 prefix), input=\"{}\"",
+                digits.length(), phone);
         return "";
     }
 }
