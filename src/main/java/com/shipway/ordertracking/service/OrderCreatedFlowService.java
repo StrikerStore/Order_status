@@ -14,6 +14,7 @@ import java.util.List;
 import com.shipway.ordertracking.config.BotspaceAccount;
 import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.config.ShopifyAccount;
+import com.shipway.ordertracking.util.PhoneNumberUtil;
 
 @Service
 public class OrderCreatedFlowService {
@@ -69,7 +70,7 @@ public class OrderCreatedFlowService {
         }
 
         // Format phone number (add +91 prefix if needed)
-        String formattedPhone = formatPhoneNumber(customerPhone);
+        String formattedPhone = PhoneNumberUtil.formatPhoneNumber(customerPhone);
 
         // Build template variables
         List<String> variables = buildTemplateVariables(webhook);
@@ -159,33 +160,6 @@ public class OrderCreatedFlowService {
         }
 
         return null;
-    }
-
-    /**
-     * Format phone number with country code
-     */
-    private String formatPhoneNumber(String phone) {
-        if (phone == null || phone.isEmpty()) {
-            return phone;
-        }
-
-        // Remove any spaces or dashes
-        String cleaned = phone.replaceAll("[\\s-]", "");
-
-        // Add +91 prefix if not present (assuming Indian numbers)
-        if (!cleaned.startsWith("+91") && !cleaned.startsWith("91")) {
-            if (cleaned.startsWith("0")) {
-                cleaned = cleaned.substring(1);
-            }
-            return "+91" + cleaned;
-        }
-
-        // Ensure + prefix
-        if (cleaned.startsWith("91") && !cleaned.startsWith("+91")) {
-            return "+" + cleaned;
-        }
-
-        return cleaned;
     }
 
     /**

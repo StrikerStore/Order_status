@@ -14,6 +14,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import com.shipway.ordertracking.config.BotspaceAccount;
+import com.shipway.ordertracking.util.PhoneNumberUtil;
 
 @Service
 public class AbandonedCartFlowService {
@@ -84,7 +85,7 @@ public class AbandonedCartFlowService {
             }
 
             // Format phone number
-            String formattedPhone = formatPhoneNumber(phone);
+            String formattedPhone = PhoneNumberUtil.formatPhoneNumber(phone);
 
             // Create Botspace request
             BotspaceMessageRequest request = new BotspaceMessageRequest();
@@ -144,33 +145,6 @@ public class AbandonedCartFlowService {
         // Default account code if extraction fails
         log.debug("Using default account code 'DEFAULT'");
         return "DEFAULT";
-    }
-
-    /**
-     * Format phone number with country code
-     */
-    private String formatPhoneNumber(String phone) {
-        if (phone == null || phone.isEmpty()) {
-            return phone;
-        }
-
-        // Remove any spaces or dashes
-        String cleaned = phone.replaceAll("[\\s-]", "");
-
-        // Add +91 prefix if not present (assuming Indian numbers)
-        if (!cleaned.startsWith("+91") && !cleaned.startsWith("91")) {
-            if (cleaned.startsWith("0")) {
-                cleaned = cleaned.substring(1);
-            }
-            return "+91" + cleaned;
-        }
-
-        // Ensure + prefix
-        if (cleaned.startsWith("91") && !cleaned.startsWith("+91")) {
-            return "+" + cleaned;
-        }
-
-        return cleaned;
     }
 
     /**

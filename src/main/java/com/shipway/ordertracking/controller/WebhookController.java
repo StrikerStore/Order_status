@@ -121,7 +121,12 @@ public class WebhookController {
     public ResponseEntity<Map<String, Object>> handleShopifyOrderCreated(
             @RequestBody ShopifyOrderCreatedWebhook webhook,
             @RequestHeader(value = "X-Shopify-Shop-Domain", required = false) String shopDomain) {
-        log.info("Received Shopify order created webhook for order: {}", webhook.getName());
+        log.info("Received Shopify order created webhook for order: {}", webhook != null ? webhook.getName() : null);
+        if (shopDomain != null && !shopDomain.isEmpty()) {
+            log.info("X-Shopify-Shop-Domain header present: {}", shopDomain);
+        } else {
+            log.warn("X-Shopify-Shop-Domain header missing or empty - cannot determine account");
+        }
 
         if (webhook == null) {
             log.warn("Received null Shopify webhook");

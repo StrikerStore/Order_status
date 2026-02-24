@@ -15,6 +15,7 @@ import java.util.Map;
 import com.shipway.ordertracking.config.BotspaceAccount;
 import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.config.ShopifyAccount;
+import com.shipway.ordertracking.util.PhoneNumberUtil;
 
 @Service
 public class InTransitFlowService {
@@ -211,7 +212,7 @@ public class InTransitFlowService {
             return false;
         }
 
-        String formattedPhone = formatPhoneNumber(order.getShippingPhone());
+        String formattedPhone = PhoneNumberUtil.formatPhoneNumber(order.getShippingPhone());
         List<String> variables = buildTemplateVariables(order);
         String trackingUrl = buildTrackingUrl(order);
 
@@ -235,34 +236,6 @@ public class InTransitFlowService {
             log.error("❌ Failed to send in transit notification for order: {}", order.getOrderId());
         }
         return sent;
-    }
-
-    /**
-     * Format phone number with country code
-     * Adjust based on your phone number format requirements
-     */
-    private String formatPhoneNumber(String phone) {
-        if (phone == null || phone.isEmpty()) {
-            return phone;
-        }
-
-        // Remove any spaces or dashes
-        String cleaned = phone.replaceAll("[\\s-]", "");
-
-        // Add +91 prefix if not present (assuming Indian numbers)
-        if (!cleaned.startsWith("+91") && !cleaned.startsWith("91")) {
-            if (cleaned.startsWith("0")) {
-                cleaned = cleaned.substring(1);
-            }
-            return "+91" + cleaned;
-        }
-
-        // Ensure + prefix
-        if (cleaned.startsWith("91") && !cleaned.startsWith("+91")) {
-            return "+" + cleaned;
-        }
-
-        return cleaned;
     }
 
     /**

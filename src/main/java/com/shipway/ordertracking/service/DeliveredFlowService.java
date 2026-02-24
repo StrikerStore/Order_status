@@ -16,6 +16,7 @@ import com.shipway.ordertracking.config.BotspaceAccount;
 import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.config.ShopifyAccount;
 import com.shipway.ordertracking.config.ShopifyProperties;
+import com.shipway.ordertracking.util.PhoneNumberUtil;
 
 @Service
 public class DeliveredFlowService {
@@ -268,7 +269,7 @@ public class DeliveredFlowService {
         log.info("Retrieved {} product details for order {} (account: {})", productDetails.size(), orderId,
                 accountCode);
 
-        String formattedPhone = formatPhoneNumber(order.getShippingPhone());
+        String formattedPhone = PhoneNumberUtil.formatPhoneNumber(order.getShippingPhone());
 
         // Construct product URL using the first product's handle
         String productUrl = productUrlPrefix; // Fallback to just prefix if no handle
@@ -319,18 +320,6 @@ public class DeliveredFlowService {
             log.error("❌ Failed to send delivered notification for order: {}", orderId);
         }
         return sent;
-    }
-
-    private String formatPhoneNumber(String phone) {
-        if (phone == null)
-            return "";
-        // Remove non-digit characters
-        String digits = phone.replaceAll("\\D", "");
-        // If it looks like Indian number (10 digits) and no prefix, add 91
-        if (digits.length() == 10) {
-            return "91" + digits;
-        }
-        return digits; // Or whatever fallback logic is needed
     }
 
     private List<String> buildTemplateVariables(StatusUpdateWebhook.OrderStatus order) {
