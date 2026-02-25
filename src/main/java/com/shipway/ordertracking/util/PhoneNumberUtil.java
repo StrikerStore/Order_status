@@ -41,9 +41,14 @@ public final class PhoneNumberUtil {
         }
 
         // Already has 91 prefix (12 digits): ensure +91 format, must have 10 digits after 91
-        if (digits.startsWith("91") && digits.length() == 12) {
+        if ((digits.startsWith("91") || digits.startsWith("+91")) && digits.length() == 12) {
             return "+91" + digits.substring(2);
         }
+
+        if (digits.startsWith("91") && digits.length() == 10) {
+            return "+91" + digits;
+        }
+
 
         // Invalid length (e.g. 6 digits): Indian mobile must be 10 digits or 91+10
         log.warn("Invalid phone number: length={} (expected 10 or 12 digits with 91 prefix), input=\"{}\"",
