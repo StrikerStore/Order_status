@@ -155,31 +155,21 @@ public class WebhookController {
      * Fasterr abandoned cart webhook endpoint
      * Configure this URL in Fasterr webhook settings: /webhook/cart-abandoned
      * Fasterr will send webhook when cart is abandoned
+     * TEMP: Accepts raw body and logs it so we can see prod payload shape; then we'll fix the model.
      */
     @PostMapping("/cart-abandoned")
-    public ResponseEntity<Map<String, Object>> handleFasterrAbandonedCart(
-            @RequestBody List<FasterrAbandonedCartWebhook> webhooks) {
-        log.info("Received Fasterr abandoned cart webhook with {} webhook(s)", webhooks != null ? webhooks.size() : 0);
-
-        if (webhooks == null || webhooks.isEmpty()) {
-            log.warn("Received empty abandoned cart webhook array");
-            return createErrorResponse("Empty webhook payload");
+    public ResponseEntity<Map<String, Object>> handleFasterrAbandonedCart(@RequestBody String rawBody) {
+        log.info("Received Fasterr abandoned cart webhook (raw body length: {})", rawBody != null ? rawBody.length() : 0);
+        if (rawBody != null && !rawBody.isBlank()) {
+            log.info("Abandoned cart raw request body:\n{}", rawBody);
+        } else {
+            log.warn("Abandoned cart webhook had empty body");
         }
-
-        // Process the first webhook (based on sample, it's an array with one object)
-        FasterrAbandonedCartWebhook webhook = webhooks.get(0);
-
-        try {
-            boolean scheduled = abandonedCartFlowService.processAbandonedCart(webhook);
-            Map<String, Object> response = Map.of(
-                    "success", scheduled,
-                    "message", scheduled ? "Abandoned cart notification scheduled"
-                            : "Failed to schedule abandoned cart notification");
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Error processing Fasterr abandoned cart webhook", e);
-            return createErrorResponse("Error processing webhook: " + e.getMessage());
-        }
+        // Return success so webhook does not fail while we capture payload; processing will be re-enabled after model is fixed
+        Map<String, Object> response = Map.of(
+                "success", true,
+                "message", "Abandoned cart webhook received (payload logged for model update)");
+        return ResponseEntity.ok(response);
     }
 
     /**
