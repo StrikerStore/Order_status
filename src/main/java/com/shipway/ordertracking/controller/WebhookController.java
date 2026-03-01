@@ -134,18 +134,11 @@ public class WebhookController {
         }
 
         try {
-            // DEBUG MODE: Print request and skip service call
-            String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(webhook);
-            log.info("🔍 DEBUG: Shopify Order Created Webhook Payload:\n{}", jsonRequest);
-            log.info("⚠️ DEBUG MODE: Skipping service call for Order Created Flow");
-
-            // boolean success = orderCreatedFlowService.processShopifyOrderCreated(webhook,
-            // shopDomain);
-            boolean success = true; // Mock success
+            boolean success = orderCreatedFlowService.processShopifyOrderCreated(webhook, shopDomain);
 
             Map<String, Object> response = Map.of(
                     "success", success,
-                    "message", success ? "Order created webhook received (DEBUG MODE)"
+                    "message", success ? "Order created webhook processed successfully"
                             : "Failed to process order created webhook");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
