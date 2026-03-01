@@ -6,6 +6,7 @@ import com.shipway.ordertracking.config.ShopifyProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -33,6 +34,10 @@ public class OrderCreatedFlowService {
     @Autowired
     private BotspaceProperties botspaceProperties;
 
+    /** When set (e.g. for local testing), order-created notifications go to this number instead of the customer. */
+    @Value("${order.created.test.phone:}")
+    private String orderCreatedTestPhone;
+
     /**
      * Process Shopify order created webhook
      * Sends notification to customer when order is created using Botspace template
@@ -55,11 +60,16 @@ public class OrderCreatedFlowService {
         }
 
         // Get customer phone number (prefer shipping address phone, fallback to order
-        // phone or customer phone)
-        String customerPhone = getCustomerPhone(webhook);
+        // phone or customer phone). Override with order.created.test.phone when set (e.g. local testing).
+        String customerPhone = (orderCreatedTestPhone != null && !orderCreatedTestPhone.isEmpty())
+                ? orderCreatedTestPhone
+                : getCustomerPhone(webhook);
         if (customerPhone == null || customerPhone.isEmpty()) {
             log.warn("Customer phone is missing for order: {}", orderName);
             return false;
+        }
+        if (orderCreatedTestPhone != null && !orderCreatedTestPhone.isEmpty()) {
+            log.info("Using order-created test phone override for order: {}", orderName);
         }
 
         // Get template ID for this account
