@@ -7,6 +7,7 @@ import com.shipway.ordertracking.dto.WebhookWrapper;
 
 import com.shipway.ordertracking.service.OrderCreatedFlowService;
 import com.shipway.ordertracking.service.WebhookProcessingService;
+import com.shipway.ordertracking.service.AbandonedCartFlowService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,9 @@ public class WebhookController {
 
     @Autowired
     private OrderCreatedFlowService orderCreatedFlowService;
+
+    @Autowired
+    private AbandonedCartFlowService abandonedCartFlowService;
 
     @Autowired
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
