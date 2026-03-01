@@ -5,6 +5,7 @@ import com.shipway.ordertracking.dto.FasterrAbandonedCartWebhook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -27,17 +28,26 @@ public class AbandonedCartFlowService {
     @Autowired
     private com.shipway.ordertracking.config.BotspaceProperties botspaceProperties;
 
+    /** When set (e.g. for local testing), abandoned cart notifications go to this number instead of the customer. */
+    @Value("${abandoned.cart.test.phone:}")
+    private String abandonedCartTestPhone;
+
     /**
      * Process abandoned cart webhook and schedule delayed Botspace notification
      */
     public boolean processAbandonedCart(FasterrAbandonedCartWebhook webhook) {
         log.info("Processing abandoned cart webhook for phone: {}", webhook.getPhone());
 
-        // Validate required fields
-        String customerPhone = webhook.getPhone();
+        // Use test phone override when set (e.g. local testing), otherwise customer phone
+        String customerPhone = (abandonedCartTestPhone != null && !abandonedCartTestPhone.isEmpty())
+                ? abandonedCartTestPhone
+                : webhook.getPhone();
         if (customerPhone == null || customerPhone.isEmpty()) {
             log.warn("Customer phone is missing in abandoned cart webhook");
             return false;
+        }
+        if (abandonedCartTestPhone != null && !abandonedCartTestPhone.isEmpty()) {
+            log.info("Using abandoned-cart test phone override");
         }
 
         // Extract account code from landing_page_url or use default

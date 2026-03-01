@@ -166,17 +166,10 @@ public class WebhookController {
         FasterrAbandonedCartWebhook webhook = webhooks.get(0);
 
         try {
-            // DEBUG MODE: Print request and skip service call
-            String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(webhooks);
-            log.info("🔍 DEBUG: Fasterr Abandoned Cart Webhook Payload:\n{}", jsonRequest);
-            log.info("⚠️ DEBUG MODE: Skipping service call for Abandoned Cart Flow");
-
-            // boolean scheduled = abandonedCartFlowService.processAbandonedCart(webhook);
-            boolean scheduled = true; // Mock success
-
+            boolean scheduled = abandonedCartFlowService.processAbandonedCart(webhook);
             Map<String, Object> response = Map.of(
                     "success", scheduled,
-                    "message", scheduled ? "Abandoned cart notification received (DEBUG MODE)"
+                    "message", scheduled ? "Abandoned cart notification scheduled"
                             : "Failed to schedule abandoned cart notification");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
