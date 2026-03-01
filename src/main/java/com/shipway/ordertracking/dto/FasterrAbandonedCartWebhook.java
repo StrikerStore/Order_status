@@ -3,198 +3,124 @@ package com.shipway.ordertracking.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
+
+/**
+ * Fasterr abandoned cart webhook payload. Only fields needed for the flow are mapped;
+ * root has attributes (cart data). Extra request fields are ignored.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FasterrAbandonedCartWebhook {
-    
-    @JsonProperty("zip")
-    private String zip;
-    
-    @JsonProperty("city")
-    private String city;
-    
-    @JsonProperty("state")
-    private String state;
-    
-    @JsonProperty("name")
-    private String name;
-    
-    @JsonProperty("phone")
-    private String phone;
-    
-    @JsonProperty("country")
-    private String country;
-    
-    @JsonProperty("address1")
-    private String address1;
-    
-    @JsonProperty("last_name")
-    private String lastName;
-    
-    @JsonProperty("first_name")
-    private String firstName;
-    
-    @JsonProperty("line_1")
-    private String line1;
-    
-    @JsonProperty("email")
-    private String email;
-    
-    @JsonProperty("payment_method")
-    private String paymentMethod;
-    
-    @JsonProperty("custom_attributes")
-    private CustomAttributes customAttributes;
-    
-    @JsonProperty("webhookUrl")
-    private String webhookUrl;
-    
-    @JsonProperty("executionMode")
-    private String executionMode;
+
+    @JsonProperty("attributes")
+    private Attributes attributes;
 
     public FasterrAbandonedCartWebhook() {
     }
 
-    public String getZip() {
-        return zip;
+    public Attributes getAttributes() {
+        return attributes;
     }
 
-    public void setZip(String zip) {
-        this.zip = zip;
+    public void setAttributes(Attributes attributes) {
+        this.attributes = attributes;
     }
 
-    public String getCity() {
-        return city;
-    }
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Attributes {
+        @JsonProperty("cart_id")
+        private String cartId;
 
-    public void setCity(String city) {
-        this.city = city;
-    }
+        @JsonProperty("phone_number")
+        private String phoneNumber;
 
-    public String getState() {
-        return state;
-    }
+        @JsonProperty("first_name")
+        private String firstName;
 
-    public void setState(String state) {
-        this.state = state;
-    }
+        @JsonProperty("checkout_url")
+        private String checkoutUrl;
 
-    public String getName() {
-        return name;
-    }
+        @JsonProperty("custom_attributes")
+        private CustomAttributes customAttributes;
 
-    public void setName(String name) {
-        this.name = name;
-    }
+        @JsonProperty("shipping_address")
+        private Address shippingAddress;
 
-    public String getPhone() {
-        return phone;
-    }
+        @JsonProperty("billing_address")
+        private Address billingAddress;
 
-    public void setPhone(String phone) {
-        this.phone = phone;
-    }
+        @JsonProperty("items")
+        private List<CartItem> items;
 
-    public String getCountry() {
-        return country;
-    }
+        public String getCartId() {
+            return cartId;
+        }
 
-    public void setCountry(String country) {
-        this.country = country;
-    }
+        public void setCartId(String cartId) {
+            this.cartId = cartId;
+        }
 
-    public String getAddress1() {
-        return address1;
-    }
+        public String getPhoneNumber() {
+            return phoneNumber;
+        }
 
-    public void setAddress1(String address1) {
-        this.address1 = address1;
-    }
+        public void setPhoneNumber(String phoneNumber) {
+            this.phoneNumber = phoneNumber;
+        }
 
-    public String getLastName() {
-        return lastName;
-    }
+        public String getFirstName() {
+            return firstName;
+        }
 
-    public void setLastName(String lastName) {
-        this.lastName = lastName;
-    }
+        public void setFirstName(String firstName) {
+            this.firstName = firstName;
+        }
 
-    public String getFirstName() {
-        return firstName;
-    }
+        public String getCheckoutUrl() {
+            return checkoutUrl;
+        }
 
-    public void setFirstName(String firstName) {
-        this.firstName = firstName;
-    }
+        public void setCheckoutUrl(String checkoutUrl) {
+            this.checkoutUrl = checkoutUrl;
+        }
 
-    public String getLine1() {
-        return line1;
-    }
+        public CustomAttributes getCustomAttributes() {
+            return customAttributes;
+        }
 
-    public void setLine1(String line1) {
-        this.line1 = line1;
-    }
+        public void setCustomAttributes(CustomAttributes customAttributes) {
+            this.customAttributes = customAttributes;
+        }
 
-    public String getEmail() {
-        return email;
-    }
+        public Address getShippingAddress() {
+            return shippingAddress;
+        }
 
-    public void setEmail(String email) {
-        this.email = email;
-    }
+        public void setShippingAddress(Address shippingAddress) {
+            this.shippingAddress = shippingAddress;
+        }
 
-    public String getPaymentMethod() {
-        return paymentMethod;
-    }
+        public Address getBillingAddress() {
+            return billingAddress;
+        }
 
-    public void setPaymentMethod(String paymentMethod) {
-        this.paymentMethod = paymentMethod;
-    }
+        public void setBillingAddress(Address billingAddress) {
+            this.billingAddress = billingAddress;
+        }
 
-    public CustomAttributes getCustomAttributes() {
-        return customAttributes;
-    }
+        public List<CartItem> getItems() {
+            return items;
+        }
 
-    public void setCustomAttributes(CustomAttributes customAttributes) {
-        this.customAttributes = customAttributes;
-    }
-
-    public String getWebhookUrl() {
-        return webhookUrl;
-    }
-
-    public void setWebhookUrl(String webhookUrl) {
-        this.webhookUrl = webhookUrl;
-    }
-
-    public String getExecutionMode() {
-        return executionMode;
-    }
-
-    public void setExecutionMode(String executionMode) {
-        this.executionMode = executionMode;
+        public void setItems(List<CartItem> items) {
+            this.items = items;
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class CustomAttributes {
-        @JsonProperty("shopifyCartToken")
-        private String shopifyCartToken;
-        
         @JsonProperty("landing_page_url")
         private String landingPageUrl;
-        
-        @JsonProperty("ipv4_address")
-        private String ipv4Address;
-
-        public CustomAttributes() {
-        }
-
-        public String getShopifyCartToken() {
-            return shopifyCartToken;
-        }
-
-        public void setShopifyCartToken(String shopifyCartToken) {
-            this.shopifyCartToken = shopifyCartToken;
-        }
 
         public String getLandingPageUrl() {
             return landingPageUrl;
@@ -203,13 +129,44 @@ public class FasterrAbandonedCartWebhook {
         public void setLandingPageUrl(String landingPageUrl) {
             this.landingPageUrl = landingPageUrl;
         }
+    }
 
-        public String getIpv4Address() {
-            return ipv4Address;
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Address {
+        @JsonProperty("phone")
+        private String phone;
+
+        public String getPhone() {
+            return phone;
         }
 
-        public void setIpv4Address(String ipv4Address) {
-            this.ipv4Address = ipv4Address;
+        public void setPhone(String phone) {
+            this.phone = phone;
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CartItem {
+        @JsonProperty("product_id")
+        private Long productId;
+
+        @JsonProperty("img_url")
+        private String imgUrl;
+
+        public Long getProductId() {
+            return productId;
+        }
+
+        public void setProductId(Long productId) {
+            this.productId = productId;
+        }
+
+        public String getImgUrl() {
+            return imgUrl;
+        }
+
+        public void setImgUrl(String imgUrl) {
+            this.imgUrl = imgUrl;
         }
     }
 }

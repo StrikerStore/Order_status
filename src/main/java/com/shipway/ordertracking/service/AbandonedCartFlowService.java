@@ -28,20 +28,29 @@ public class AbandonedCartFlowService {
     @Autowired
     private com.shipway.ordertracking.config.BotspaceProperties botspaceProperties;
 
+    @Autowired
+    private com.shipway.ordertracking.service.ShopifyService shopifyService;
+
     /** When set (e.g. for local testing), abandoned cart notifications go to this number instead of the customer. */
     @Value("${abandoned.cart.test.phone:}")
     private String abandonedCartTestPhone;
 
     /**
      * Process abandoned cart webhook and schedule delayed Botspace notification
+     * Payload has cart data under attributes (prod shape).
      */
     public boolean processAbandonedCart(FasterrAbandonedCartWebhook webhook) {
-        log.info("Processing abandoned cart webhook for phone: {}", webhook.getPhone());
+        if (webhook == null || webhook.getAttributes() == null) {
+            log.warn("Abandoned cart webhook or attributes is null");
+            return false;
+        }
+        FasterrAbandonedCartWebhook.Attributes attrs = webhook.getAttributes();
 
-        // Use test phone override when set (e.g. local testing), otherwise customer phone
         String customerPhone = (abandonedCartTestPhone != null && !abandonedCartTestPhone.isEmpty())
                 ? abandonedCartTestPhone
-                : webhook.getPhone();
+                : getPhoneFromAttributes(attrs);
+        log.info("Processing abandoned cart webhook for phone: {}", customerPhone);
+
         if (customerPhone == null || customerPhone.isEmpty()) {
             log.warn("Customer phone is missing in abandoned cart webhook");
             return false;
@@ -50,61 +59,77 @@ public class AbandonedCartFlowService {
             log.info("Using abandoned-cart test phone override");
         }
 
-        // Extract account code from landing_page_url or use default
+        // Extract account code from landing_page_url or checkout_url
         String accountCode = extractAccountCode(webhook);
         log.info("Extracted account code: {} for abandoned cart", accountCode);
 
-        // Build template variables
-        List<String> templateVariables = buildTemplateVariables(webhook);
+        // Build template variables [first_name, recovery_url (onlineStoreUrl or checkout_url), product_id]
+        List<String> templateVariables = buildTemplateVariables(webhook, accountCode);
 
-        // Extract cart token for tracking
-        String cartToken = null;
-        if (webhook.getCustomAttributes() != null) {
-            cartToken = webhook.getCustomAttributes().getShopifyCartToken();
-        }
+        // First item image URL for mediaVariable and cards (Botspace template expects these)
+        String firstItemImgUrl = getFirstItemImgUrl(attrs);
 
-        // Schedule async task with 1-hour delay using CompletableFuture.delayedExecutor
+        // Cart ID for tracking (prod uses cart_id, not shopifyCartToken)
+        String cartToken = attrs.getCartId();
+
+        // Schedule async task with 1-minute delay
         String finalCartToken = cartToken;
+        String finalFirstItemImgUrl = firstItemImgUrl;
         CompletableFuture.runAsync(() -> {
             try {
-                sendAbandonedCartNotification(accountCode, customerPhone, templateVariables, finalCartToken);
+                sendAbandonedCartNotification(accountCode, customerPhone, templateVariables, finalCartToken, finalFirstItemImgUrl);
             } catch (Exception e) {
                 log.error("Error in abandoned cart notification task for phone: {}", customerPhone, e);
             }
-        }, CompletableFuture.delayedExecutor(1, TimeUnit.HOURS));
+        }, CompletableFuture.delayedExecutor(1, TimeUnit.MINUTES));
 
-        log.info("Abandoned cart notification scheduled for phone: {} (account: {}), will send in 1 hour",
+        log.info("Abandoned cart notification scheduled for phone: {} (account: {}), will send in 1 minute",
                 customerPhone, accountCode);
         return true;
     }
 
+    /** Phone: attributes.phone_number, else shipping_address.phone, else billing_address.phone */
+    private String getPhoneFromAttributes(FasterrAbandonedCartWebhook.Attributes attrs) {
+        if (attrs.getPhoneNumber() != null && !attrs.getPhoneNumber().isEmpty()) {
+            return attrs.getPhoneNumber();
+        }
+        if (attrs.getShippingAddress() != null && attrs.getShippingAddress().getPhone() != null) {
+            return attrs.getShippingAddress().getPhone();
+        }
+        if (attrs.getBillingAddress() != null && attrs.getBillingAddress().getPhone() != null) {
+            return attrs.getBillingAddress().getPhone();
+        }
+        return null;
+    }
+
     /**
-     * Send abandoned cart notification via Botspace (called after 1-hour delay)
+     * Send abandoned cart notification via Botspace (called after 1-minute delay).
+     * Matches Botspace API: variables [first_name, recovery_url, product_id], mediaVariable and cards from first item img_url.
      */
     @Async
     private void sendAbandonedCartNotification(String accountCode, String phone, List<String> templateVariables,
-            String cartToken) {
+            String cartToken, String firstItemImgUrl) {
         try {
             log.info("Sending abandoned cart notification for phone: {} (account: {})", phone, accountCode);
 
-            // Get template ID for this account
             String templateId = getTemplateIdForAccount(accountCode);
             if (templateId == null || templateId.isEmpty()) {
                 log.warn("Template ID not configured for account code: {} (phone: {})", accountCode, phone);
                 return;
             }
 
-            // Format phone number
             String formattedPhone = PhoneNumberUtil.formatPhoneNumber(phone);
 
-            // Create Botspace request
             BotspaceMessageRequest request = new BotspaceMessageRequest();
             request.setPhone(formattedPhone);
             request.setTemplateId(templateId);
             request.setVariables(templateVariables);
 
-            // Send template message via Botspace
-            // Send template message via Botspace
+            if (firstItemImgUrl != null && !firstItemImgUrl.isEmpty()) {
+                request.setMediaVariable(firstItemImgUrl);
+                request.setCards(List.of(new BotspaceMessageRequest.Card(firstItemImgUrl)));
+            }
+
             boolean sent = botspaceService.sendTemplateMessage(accountCode, request, cartToken,
                     "sent_abandonedCart", "failed_abandonedCart");
 
@@ -123,63 +148,88 @@ public class AbandonedCartFlowService {
     }
 
     /**
-     * Extract account code from landing_page_url domain or use default
+     * Extract account code from attributes.custom_attributes.landing_page_url or attributes.checkout_url
      */
     private String extractAccountCode(FasterrAbandonedCartWebhook webhook) {
-        if (webhook.getCustomAttributes() != null &&
-                webhook.getCustomAttributes().getLandingPageUrl() != null) {
-
-            String landingPageUrl = webhook.getCustomAttributes().getLandingPageUrl();
+        String landingPageUrl = null;
+        if (webhook.getAttributes() != null && webhook.getAttributes().getCustomAttributes() != null) {
+            landingPageUrl = webhook.getAttributes().getCustomAttributes().getLandingPageUrl();
+        }
+        if (landingPageUrl == null || landingPageUrl.isEmpty()) {
+            if (webhook.getAttributes() != null && webhook.getAttributes().getCheckoutUrl() != null) {
+                landingPageUrl = webhook.getAttributes().getCheckoutUrl();
+            }
+        }
+        if (landingPageUrl != null && !landingPageUrl.isEmpty()) {
             try {
-                // Extract domain from URL (e.g., "thestrikerstore.com" -> "thestrikerstore")
                 java.net.URL url = new java.net.URL(landingPageUrl);
                 String host = url.getHost();
-
-                // Remove www. prefix if present
                 if (host.startsWith("www.")) {
                     host = host.substring(4);
                 }
-
-                // Extract subdomain/domain name (before first dot)
                 int firstDotIndex = host.indexOf('.');
                 if (firstDotIndex > 0) {
-                    String accountCode = host.substring(0, firstDotIndex);
-                    log.debug("Extracted account code '{}' from landing page URL: {}", accountCode, landingPageUrl);
-                    return accountCode.toUpperCase();
+                    String domainPart = host.substring(0, firstDotIndex);
+                    log.debug("Extracted domain part '{}' from URL: {}", domainPart, landingPageUrl);
+                    // Map store domain to config account code (STRI, DRIB)
+                    String lower = domainPart.toLowerCase();
+                    if ("thestrikerstore".equals(lower)) {
+                        return "STRI";
+                    }
+                    if ("thedribblestore".equals(lower)) {
+                        return "DRIB";
+                    }
+                    return domainPart.toUpperCase();
                 }
             } catch (Exception e) {
-                log.warn("Could not parse landing page URL for account code extraction: {}", landingPageUrl, e);
+                log.warn("Could not parse URL for account code extraction: {}", landingPageUrl, e);
             }
         }
-
-        // Default account code if extraction fails
         log.debug("Using default account code 'DEFAULT'");
         return "DEFAULT";
     }
 
     /**
-     * Build template variables array
-     * Order of variables should match the template variable order in Botspace
+     * Build template variables to match Botspace abandoned_cart template:
+     * [0] first_name, [1] product onlineStoreUrl (from Shopify GraphQL) or checkout_url fallback, [2] first item product_id
      */
-    private List<String> buildTemplateVariables(FasterrAbandonedCartWebhook webhook) {
+    private List<String> buildTemplateVariables(FasterrAbandonedCartWebhook webhook, String accountCode) {
         List<String> variables = new ArrayList<>();
-
-        // Variable 1: Customer first name
-        String firstName = webhook.getFirstName() != null ? webhook.getFirstName() : "";
+        FasterrAbandonedCartWebhook.Attributes attrs = webhook.getAttributes();
+        String firstName = attrs != null && attrs.getFirstName() != null ? attrs.getFirstName() : "";
         variables.add(firstName);
 
-        // Variable 2: Cart recovery URL (if available)
-        if (webhook.getCustomAttributes() != null &&
-                webhook.getCustomAttributes().getLandingPageUrl() != null) {
-            String landingPageUrl = webhook.getCustomAttributes().getLandingPageUrl();
-            variables.add(landingPageUrl);
-        } else {
-            variables.add(""); // Empty string if no URL
+        // Variable 2: product onlineStoreUrl from Shopify (GraphQL GetProductById) only; no fallback
+        String recoveryUrl = "";
+        if (attrs != null && attrs.getItems() != null && !attrs.getItems().isEmpty()) {
+            Long productId = attrs.getItems().get(0).getProductId();
+            if (productId != null && accountCode != null && !accountCode.isEmpty()) {
+                String onlineStoreUrl = shopifyService.getProductOnlineStoreUrl(accountCode, productId);
+                if (onlineStoreUrl != null && !onlineStoreUrl.isEmpty()) {
+                    recoveryUrl = onlineStoreUrl;
+                }
+            }
         }
+        variables.add(recoveryUrl);
 
-        // Add more variables as needed based on your template
-
+        // Variable 3: first item product_id (as string)
+        String productIdStr = "";
+        if (attrs != null && attrs.getItems() != null && !attrs.getItems().isEmpty()) {
+            Long pid = attrs.getItems().get(0).getProductId();
+            if (pid != null) {
+                productIdStr = String.valueOf(pid);
+            }
+        }
+        variables.add(productIdStr);
         return variables;
+    }
+
+    /** First item img_url from attributes.items for mediaVariable and cards */
+    private String getFirstItemImgUrl(FasterrAbandonedCartWebhook.Attributes attrs) {
+        if (attrs == null || attrs.getItems() == null || attrs.getItems().isEmpty()) {
+            return null;
+        }
+        return attrs.getItems().get(0).getImgUrl();
     }
 
     /**

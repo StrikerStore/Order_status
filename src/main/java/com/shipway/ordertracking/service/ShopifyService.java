@@ -852,6 +852,49 @@ public class ShopifyService {
     }
 
     /**
+     * Get product onlineStoreUrl by product ID via GraphQL (for abandoned cart template variable).
+     * Uses query GetProductById with id: gid://shopify/Product/{productId}.
+     *
+     * @param accountCode Account code (STRI, DRIB, etc.)
+     * @param productId   Shopify product ID (numeric)
+     * @return onlineStoreUrl string, or null if not found or on error
+     */
+    public String getProductOnlineStoreUrl(String accountCode, Long productId) {
+        if (accountCode == null || accountCode.isEmpty() || productId == null) {
+            return null;
+        }
+        ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+        if (account == null) {
+            return null;
+        }
+        String productGid = "gid://shopify/Product/" + productId;
+        String query = "query GetProductById($id: ID!) { product(id: $id) { id title handle onlineStoreUrl featuredImage { url } } }";
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("id", productGid);
+
+        Map<String, Object> response = callGraphQL(account, query, variables, "Get Product By Id");
+        if (response == null) {
+            return null;
+        }
+        try {
+            Object dataObj = response.get("data");
+            if (dataObj == null || !(dataObj instanceof Map)) {
+                return null;
+            }
+            Map<String, Object> data = (Map<String, Object>) dataObj;
+            Object productObj = data.get("product");
+            if (productObj == null || !(productObj instanceof Map)) {
+                return null;
+            }
+            Object urlObj = ((Map<String, Object>) productObj).get("onlineStoreUrl");
+            return urlObj != null ? urlObj.toString() : null;
+        } catch (Exception e) {
+            log.warn("Failed to parse onlineStoreUrl from GetProductById response: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Call Shopify GraphQL API
      * 
      * @param account   Shopify account configuration
