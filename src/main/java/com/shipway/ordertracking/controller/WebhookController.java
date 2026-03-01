@@ -175,8 +175,15 @@ public class WebhookController {
         }
 
         if (webhook.getAttributes() == null) {
-            log.warn("Abandoned cart webhook has no attributes or body; raw body (first 500 chars): {}", rawBody.length() > 500 ? rawBody.substring(0, 500) + "..." : rawBody);
-            return createErrorResponse("Empty or invalid webhook payload (missing attributes/body)");
+            // Try cart-at-root format: { "cart_id", "phone_number", "items", ... }
+            try {
+                FasterrAbandonedCartWebhook.Attributes rootAsAttributes = objectMapper.readValue(rawBody, FasterrAbandonedCartWebhook.Attributes.class);
+                webhook = new FasterrAbandonedCartWebhook();
+                webhook.setAttributes(rootAsAttributes);
+            } catch (Exception e) {
+                log.warn("Abandoned cart webhook has no attributes/body and root is not valid Attributes; raw body (first 500 chars): {}", rawBody.length() > 500 ? rawBody.substring(0, 500) + "..." : rawBody);
+                return createErrorResponse("Empty or invalid webhook payload (missing attributes/body)");
+            }
         }
 
         try {
