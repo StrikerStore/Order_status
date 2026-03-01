@@ -6,8 +6,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Fasterr abandoned cart webhook payload. Only fields needed for the flow are mapped;
- * root has attributes (cart data). Extra request fields are ignored.
+ * Fasterr abandoned cart webhook payload. Supports:
+ * - { "attributes": { cart data } }
+ * - { "body": { cart data } }  (Fasterr/n8n style wrapper)
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FasterrAbandonedCartWebhook {
@@ -15,15 +16,27 @@ public class FasterrAbandonedCartWebhook {
     @JsonProperty("attributes")
     private Attributes attributes;
 
+    @JsonProperty("body")
+    private Attributes body;
+
     public FasterrAbandonedCartWebhook() {
     }
 
+    /** Cart data from either "attributes" or "body" wrapper. */
     public Attributes getAttributes() {
-        return attributes;
+        return attributes != null ? attributes : body;
     }
 
     public void setAttributes(Attributes attributes) {
         this.attributes = attributes;
+    }
+
+    public Attributes getBody() {
+        return body;
+    }
+
+    public void setBody(Attributes body) {
+        this.body = body;
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

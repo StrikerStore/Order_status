@@ -158,12 +158,25 @@ public class WebhookController {
      */
     @PostMapping("/cart-abandoned")
     public ResponseEntity<Map<String, Object>> handleFasterrAbandonedCart(
-            @RequestBody FasterrAbandonedCartWebhook webhook) {
+            @RequestBody String rawBody) {
         log.info("Received Fasterr abandoned cart webhook");
 
-        if (webhook == null || webhook.getAttributes() == null) {
-            log.warn("Abandoned cart webhook or attributes is null");
-            return createErrorResponse("Empty or invalid webhook payload");
+        if (rawBody == null || rawBody.isBlank()) {
+            log.warn("Abandoned cart webhook body is empty");
+            return createErrorResponse("Empty webhook payload");
+        }
+
+        FasterrAbandonedCartWebhook webhook;
+        try {
+            webhook = objectMapper.readValue(rawBody, FasterrAbandonedCartWebhook.class);
+        } catch (Exception e) {
+            log.warn("Abandoned cart webhook parse failed, raw body (first 500 chars): {}", rawBody.length() > 500 ? rawBody.substring(0, 500) + "..." : rawBody, e);
+            return createErrorResponse("Invalid webhook JSON: " + e.getMessage());
+        }
+
+        if (webhook.getAttributes() == null) {
+            log.warn("Abandoned cart webhook has no attributes or body; raw body (first 500 chars): {}", rawBody.length() > 500 ? rawBody.substring(0, 500) + "..." : rawBody);
+            return createErrorResponse("Empty or invalid webhook payload (missing attributes/body)");
         }
 
         try {
