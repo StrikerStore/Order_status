@@ -52,9 +52,9 @@ public class OrderCreatedFlowService {
             return false;
         }
 
-        // Get order name (e.g., "#1001")
-        String orderName = webhook.getName();
-        if (orderName == null || orderName.isEmpty()) {
+        // Get order name (e.g., "#1001") for tracking in customer_message_tracking
+        String orderName = webhook.getName() != null ? webhook.getName() : "";
+        if (orderName.isEmpty()) {
             log.warn("Order name is missing in Shopify webhook");
             return false;
         }
@@ -91,8 +91,8 @@ public class OrderCreatedFlowService {
         request.setTemplateId(templateId);
         request.setVariables(variables);
 
-        // Send template message via Botspace
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, String.valueOf(webhook.getId()),
+        // Send template message via Botspace (order_id in table = order name)
+        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, orderName,
                 "sent_orderCreated",
                 "failed_orderCreated");
 

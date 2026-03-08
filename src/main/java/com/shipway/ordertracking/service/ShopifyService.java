@@ -440,6 +440,51 @@ public class ShopifyService {
     }
 
     /**
+     * Get shipping phone number for an order (for post-delivered follow-up etc.).
+     * Uses REST API to fetch order and read shipping_address.phone.
+     *
+     * @param accountCode Account code (STRI, DRIB, etc.)
+     * @param orderName   Order name/number (e.g. "254120" or "#254120")
+     * @return Phone string, or null if not found
+     */
+    public String getOrderShippingPhone(String accountCode, String orderName) {
+        if (accountCode == null || accountCode.isEmpty() || orderName == null || orderName.isEmpty()) {
+            return null;
+        }
+        ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+        if (account == null) {
+            return null;
+        }
+        Long orderId = getOrderIdByName(account, orderName);
+        if (orderId == null) {
+            return null;
+        }
+        try {
+            String apiUrl = account.getApiUrl() + "/orders/" + orderId + ".json";
+            HttpHeaders headers = createHeaders(account);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Map> response = restTemplate.exchange(apiUrl, HttpMethod.GET, entity, Map.class);
+            if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
+                return null;
+            }
+            Map<String, Object> body = response.getBody();
+            Object orderObj = body.get("order");
+            if (!(orderObj instanceof Map)) {
+                return null;
+            }
+            Object shippingObj = ((Map<?, ?>) orderObj).get("shipping_address");
+            if (!(shippingObj instanceof Map)) {
+                return null;
+            }
+            Object phoneObj = ((Map<?, ?>) shippingObj).get("phone");
+            return phoneObj != null ? phoneObj.toString() : null;
+        } catch (Exception e) {
+            log.warn("Failed to get shipping phone for order {} (account: {}): {}", orderName, accountCode, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Check if order has a specific tag
      * 
      * @param accountCode Account code

@@ -15,6 +15,7 @@ public class BotspaceAccount {
     private String orderCreatedTemplateId;
     private String shopifyFulfillmentTemplateId;
     private String abandonedCartTemplateId;
+    private String postDeliveredFollowUpTemplateId;
 
     public BotspaceAccount() {
     }
@@ -89,6 +90,14 @@ public class BotspaceAccount {
 
     public void setAbandonedCartTemplateId(String abandonedCartTemplateId) {
         this.abandonedCartTemplateId = abandonedCartTemplateId;
+    }
+
+    public String getPostDeliveredFollowUpTemplateId() {
+        return postDeliveredFollowUpTemplateId;
+    }
+
+    public void setPostDeliveredFollowUpTemplateId(String postDeliveredFollowUpTemplateId) {
+        this.postDeliveredFollowUpTemplateId = postDeliveredFollowUpTemplateId;
     }
 
     /**

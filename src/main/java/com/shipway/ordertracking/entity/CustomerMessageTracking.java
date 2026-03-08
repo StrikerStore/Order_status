@@ -2,9 +2,12 @@ package com.shipway.ordertracking.entity;
 
 import jakarta.persistence.*;
 
+import java.time.Instant;
+
 /**
  * Entity mapping to the existing customer_message_tracking table.
  * Used for deduplication before sending Botspace notifications.
+ * created_at is set when the record is inserted (for "yesterday" follow-up queries).
  */
 @Entity
 @Table(name = "customer_message_tracking")
@@ -23,6 +26,9 @@ public class CustomerMessageTracking {
     @Column(name = "message_status", nullable = false)
     private String messageStatus;
 
+    @Column(name = "created_at")
+    private Instant createdAt;
+
     public CustomerMessageTracking() {
     }
 
@@ -30,6 +36,7 @@ public class CustomerMessageTracking {
         this.orderId = orderId;
         this.accountCode = accountCode;
         this.messageStatus = messageStatus;
+        this.createdAt = Instant.now();
     }
 
     public Integer getId() {
@@ -62,5 +69,13 @@ public class CustomerMessageTracking {
 
     public void setMessageStatus(String messageStatus) {
         this.messageStatus = messageStatus;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
     }
 }

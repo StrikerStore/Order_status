@@ -2,12 +2,16 @@ package com.shipway.ordertracking.service;
 
 import com.shipway.ordertracking.entity.CustomerMessageTracking;
 import com.shipway.ordertracking.repository.CustomerMessageTrackingRepository;
+import com.shipway.ordertracking.repository.OrderPhoneProjection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 
 /**
@@ -79,5 +83,27 @@ public class CustomerMessageTrackingService {
                     messageStatus, orderId, accountCode, e.getMessage(), e);
             return false;
         }
+    }
+
+    private static final String SENT_DELIVERED = "sent_delivered";
+
+    /**
+     * Find all orders that received the "delivered" message yesterday (by created_at).
+     * Used by post-delivered follow-up flow.
+     */
+    public List<CustomerMessageTracking> findSentDeliveredYesterday() {
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+        ZoneId zone = ZoneId.systemDefault();
+        Instant start = yesterday.atStartOfDay(zone).toInstant();
+        Instant end = yesterday.plusDays(1).atStartOfDay(zone).toInstant();
+        return repository.findByMessageStatusAndCreatedAtBetween(SENT_DELIVERED, start, end);
+    }
+
+    /**
+     * Find order_id, shipping_phone, account_code from customer_info joined with customer_message_tracking
+     * for sent_delivered records where DATE(created_at) = yesterday (DB date). Used by post-delivered follow-up.
+     */
+    public List<OrderPhoneProjection> findOrderIdAndPhoneForSentDeliveredYesterday() {
+        return repository.findOrderIdAndPhoneForSentDeliveredYesterday();
     }
 }
