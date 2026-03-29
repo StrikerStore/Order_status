@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Shopify fulfillment — order tracking</title>
+    <style>
+        :root {
+            --bg: #0f1419;
+            --surface: #1a2332;
+            --border: #2d3a4d;
+            --text: #e7edf4;
+            --muted: #8b9cb3;
+            --accent: #3d9aed;
+            --accent-hover: #5eb0ff;
+            --success: #3ecf8e;
+            --danger: #f07178;
+            --radius: 10px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+        .wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.25rem 3rem;
+        }
+        h1 {
+            font-size: 1.35rem;
+            font-weight: 600;
+            margin: 0 0 0.25rem;
+            letter-spacing: -0.02em;
+        }
+        .sub {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-bottom: 1.75rem;
+        }
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.35rem;
+            margin-bottom: 1.5rem;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: flex-end;
+        }
+        label {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            margin-bottom: 0.35rem;
+        }
+        input[type="text"], input[type="number"] {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.55rem 0.75rem;
+            border-radius: 8px;
+            min-width: 180px;
+            font-size: 0.95rem;
+        }
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        button, .btn-load {
+            background: var(--accent);
+            color: #0a0e14;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        button:hover, .btn-load:hover {
+            background: var(--accent-hover);
+        }
+        button.btn-apply {
+            background: transparent;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            padding: 0.4rem 0.85rem;
+            font-size: 0.8rem;
+        }
+        button.btn-apply:hover {
+            background: rgba(61, 154, 237, 0.12);
+        }
+        button.btn-apply-all {
+            background: rgba(255, 183, 77, 0.2);
+            color: #ffc46b;
+            border: 1px solid rgba(255, 183, 77, 0.55);
+            padding: 0.55rem 1.1rem;
+            font-size: 0.88rem;
+        }
+        button.btn-apply-all:hover {
+            background: rgba(255, 183, 77, 0.28);
+        }
+        .table-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .table-toolbar p {
+            margin: 0;
+            font-size: 0.8rem;
+            color: var(--muted);
+            max-width: 28rem;
+        }
+        .flash {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.9rem;
+        }
+        .flash.ok { background: rgba(62, 207, 142, 0.15); border: 1px solid var(--success); color: #a8e6c8; }
+        .flash.err { background: rgba(240, 113, 120, 0.12); border: 1px solid var(--danger); color: #f5b5b9; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.65rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+        .col-num {
+            width: 3rem;
+            text-align: right;
+            color: var(--muted);
+            font-variant-numeric: tabular-nums;
+        }
+        .counts {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 1rem;
+        }
+        .empty {
+            color: var(--muted);
+            padding: 2rem;
+            text-align: center;
+        }
+        code { font-size: 0.85em; color: #b8c9dc; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <p class="sub" style="margin-bottom:0.75rem;"><a th:href="@{/}" style="color:var(--accent);text-decoration:none;">← Home</a></p>
+    <h1>Shopify fulfillment</h1>
+    <p class="sub">Load unfulfilled Shopify orders with matching <code>order_tracking</code> rows, then update Shopify per row (delivered / in transit / out for delivery only).
+        <a th:href="@{/ui/message-tracking}" style="color:var(--accent);text-decoration:none;margin-left:0.35rem;">Customer message tracking →</a></p>
+    <p class="sub" th:if="${shopifyCreatedCutoffNote != null}" style="margin-top: -1rem;">The table only lists orders whose Shopify <strong>Created</strong> time is on or after <strong th:text="${shopifyCreatedCutoffNote}">27 January 2026</strong> (start of that day, UTC). Rows without a parseable created time are hidden.</p>
+
+    <div th:if="${flashMessage}" th:class="${flashSuccess} ? 'flash ok' : 'flash err'" th:text="${flashMessage}">Message</div>
+
+    <div class="panel">
+        <form th:action="@{/ui/fulfillment/load}" method="post">
+            <div class="row">
+                <div>
+                    <label for="accountCode">Account code (optional)</label>
+                    <input id="accountCode" type="text" name="accountCode" th:value="${lastAccountCode}" placeholder="STRI, DRIB, …"/>
+                </div>
+                <div>
+                    <label for="limit">Limit per store</label>
+                    <input id="limit" type="number" name="limit" min="1" max="2000" th:value="${lastLimit}"/>
+                </div>
+                <div>
+                    <button type="submit" class="btn-load">Load orders</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="panel" th:if="${items != null and !items.isEmpty()}">
+        <div class="table-toolbar">
+            <p>Runs the same Shopify update as each row’s <strong>Apply to Shopify</strong> for every visible order (delivered / in transit / out for delivery only). May take a while.</p>
+            <form th:action="@{/ui/fulfillment/apply-all}" method="post" style="margin:0;">
+                <input type="hidden" name="lastAccountCode" th:value="${lastAccountCode}"/>
+                <input type="hidden" name="lastLimit" th:value="${lastLimit}"/>
+                <button type="submit" class="btn-apply-all"
+                        th:attr="data-row-count=${#lists.size(items)}"
+                        onclick="return confirm('Apply Shopify to all ' + this.getAttribute('data-row-count') + ' visible orders?');">
+                    Apply all to Shopify
+                </button>
+            </form>
+        </div>
+        <table>
+            <thead>
+            <tr>
+                <th class="col-num">#</th>
+                <th>Order ID</th>
+                <th>Account</th>
+                <th>Tracking status</th>
+                <th>AWB (label)</th>
+                <th>Shopify name</th>
+                <th>Shopify numeric ID</th>
+                <th>Fulfillment display</th>
+                <th>Created</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="item, row : ${items}">
+                <td class="col-num" th:text="${row.count}">1</td>
+                <td th:text="${item.orderId}">—</td>
+                <td th:text="${item.accountCode}">—</td>
+                <td th:text="${item.orderTrackingStatus}">—</td>
+                <td th:text="${item.awb != null ? item.awb : '—'}">—</td>
+                <td th:text="${item.shopifyOrderName}">—</td>
+                <td th:text="${item.shopifyOrderNumericId}">—</td>
+                <td th:text="${item.shopifyDisplayFulfillmentStatus}">—</td>
+                <td th:text="${item.shopifyCreatedAt}">—</td>
+                <td>
+                    <form th:action="@{/ui/fulfillment/apply}" method="post" style="margin:0;">
+                        <input type="hidden" name="accountCode" th:value="${item.accountCode}"/>
+                        <input type="hidden" name="orderId" th:value="${item.orderId}"/>
+                        <input type="hidden" name="orderTrackingStatus" th:value="${item.orderTrackingStatus}"/>
+                        <input type="hidden" name="lastAccountCode" th:value="${lastAccountCode}"/>
+                        <input type="hidden" name="lastLimit" th:value="${lastLimit}"/>
+                        <button type="submit" class="btn-apply">Apply to Shopify</button>
+                    </form>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        <p class="counts" th:if="${counts != null}">
+            <th:block th:each="e : ${counts}">
+                <span th:text="|${e.key}=${e.value} |">k=v </span>
+            </th:block>
+        </p>
+    </div>
+
+    <div class="panel empty" th:if="${items == null or items.isEmpty()}">
+        No rows loaded yet. Set account (optional) and limit, then click <strong>Load orders</strong>.
+    </div>
+</div>
+</body>
+</html>

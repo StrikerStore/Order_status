@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Customer message tracking</title>
+    <style>
+        :root {
+            --bg: #0f1419;
+            --surface: #1a2332;
+            --border: #2d3a4d;
+            --text: #e7edf4;
+            --muted: #8b9cb3;
+            --accent: #3d9aed;
+            --accent-hover: #5eb0ff;
+            --radius: 10px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+        .wrap {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.25rem 3rem;
+        }
+        h1 {
+            font-size: 1.35rem;
+            font-weight: 600;
+            margin: 0 0 0.25rem;
+            letter-spacing: -0.02em;
+        }
+        .sub {
+            color: var(--muted);
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+        .sub a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .sub a:hover { text-decoration: underline; }
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem 1.35rem;
+            margin-bottom: 1.5rem;
+        }
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            align-items: flex-end;
+        }
+        label {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            margin-bottom: 0.35rem;
+        }
+        input[type="text"], input[type="number"], select {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 0.55rem 0.75rem;
+            border-radius: 8px;
+            min-width: 160px;
+            font-size: 0.95rem;
+        }
+        select { min-width: 220px; cursor: pointer; }
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        button {
+            background: var(--accent);
+            color: #0a0e14;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        button:hover { background: var(--accent-hover); }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.88rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 0.65rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            color: var(--muted);
+            font-weight: 600;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        tr:hover td { background: rgba(255,255,255,0.02); }
+        .meta {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin: 0.75rem 0 0;
+        }
+        .pager {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.75rem 1rem;
+            margin-top: 1rem;
+            font-size: 0.88rem;
+        }
+        .pager a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+        .pager a:hover { text-decoration: underline; }
+        .pager .disabled {
+            color: var(--muted);
+            pointer-events: none;
+        }
+        .empty {
+            color: var(--muted);
+            padding: 1.5rem 0;
+            text-align: center;
+        }
+        code { font-size: 0.85em; color: #b8c9dc; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <p class="sub" style="margin-bottom:0.75rem;"><a th:href="@{/}" style="color:var(--accent);text-decoration:none;">← Home</a></p>
+    <h1>Customer message tracking</h1>
+    <p class="sub">Read-only view of <code>customer_message_tracking</code> (Botspace send / dedup records). Filter by account, order id, or message status.</p>
+    <p class="sub"><a th:href="@{/ui/fulfillment}">← Shopify fulfillment</a></p>
+
+    <div class="panel">
+        <form th:action="@{/ui/message-tracking}" method="get">
+            <div class="row">
+                <div>
+                    <label for="accountCode">Account code</label>
+                    <input id="accountCode" type="text" name="accountCode" th:value="${filterAccountCode}" placeholder="STRI, DRIB, …"/>
+                </div>
+                <div>
+                    <label for="orderId">Order ID</label>
+                    <input id="orderId" type="text" name="orderId" th:value="${filterOrderId}" placeholder="Partial match"/>
+                </div>
+                <div>
+                    <label for="messageStatus">Message status</label>
+                    <select id="messageStatus" name="messageStatus">
+                        <option value="">Any</option>
+                        <option th:each="s : ${statusOptions}" th:value="${s}" th:text="${s}"
+                                th:selected="${filterMessageStatus != null and filterMessageStatus == s}"></option>
+                    </select>
+                </div>
+                <div>
+                    <label for="size">Page size</label>
+                    <input id="size" type="number" name="size" min="1" max="100" th:value="${pageSize}"/>
+                </div>
+                <div>
+                    <input type="hidden" name="page" value="0"/>
+                    <button type="submit">Search</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="panel">
+        <p class="meta" th:if="${page != null}">
+            <span th:text="${page.totalElements}">0</span> row(s) total
+            <span th:if="${page.totalPages > 0}"> — page <span th:text="${page.number + 1}">1</span> of <span th:text="${page.totalPages}">1</span></span>
+        </p>
+        <table th:if="${page != null and !page.content.isEmpty()}">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Order ID</th>
+                <th>Account</th>
+                <th>Message status</th>
+                <th>Created</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="row : ${page.content}">
+                <td th:text="${row.id}">—</td>
+                <td th:text="${row.orderId}">—</td>
+                <td th:text="${row.accountCode}">—</td>
+                <td th:text="${row.messageStatus}">—</td>
+                <td th:text="${row.createdAt != null ? row.createdAt : '—'}">—</td>
+            </tr>
+            </tbody>
+        </table>
+        <div class="empty" th:if="${page == null or page.content.isEmpty()}">No rows match the current filters.</div>
+
+        <nav class="pager" th:if="${page != null and page.totalPages > 1}">
+            <th:block th:if="${page.hasPrevious()}">
+                <a th:href="@{/ui/message-tracking(accountCode=${filterAccountCode},orderId=${filterOrderId},messageStatus=${filterMessageStatus},page=0,size=${pageSize})}">First</a>
+                <a th:href="@{/ui/message-tracking(accountCode=${filterAccountCode},orderId=${filterOrderId},messageStatus=${filterMessageStatus},page=${page.number - 1},size=${pageSize})}">Previous</a>
+            </th:block>
+            <th:block th:unless="${page.hasPrevious()}">
+                <span class="disabled">First</span>
+                <span class="disabled">Previous</span>
+            </th:block>
+            <th:block th:if="${page.hasNext()}">
+                <a th:href="@{/ui/message-tracking(accountCode=${filterAccountCode},orderId=${filterOrderId},messageStatus=${filterMessageStatus},page=${page.number + 1},size=${pageSize})}">Next</a>
+                <a th:href="@{/ui/message-tracking(accountCode=${filterAccountCode},orderId=${filterOrderId},messageStatus=${filterMessageStatus},page=${page.totalPages - 1},size=${pageSize})}">Last</a>
+            </th:block>
+            <th:block th:unless="${page.hasNext()}">
+                <span class="disabled">Next</span>
+                <span class="disabled">Last</span>
+            </th:block>
+        </nav>
+    </div>
+</div>
+</body>
+</html>

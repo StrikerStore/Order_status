@@ -88,8 +88,10 @@ public class WebhookProcessingService {
         } else if (normalizedStatus.contains("IN TRANSIT") || normalizedStatus.contains("PICKED UP")) {
             return inTransitFlowService.processInTransit(order);
         } else if (normalizedStatus.contains("SHIPMENT BOOKED") || normalizedStatus.contains("OUT FOR PICKUP")
-                || normalizedStatus.contains("SHPFR1") || normalizedStatus.contains("SHIPPED")) {
-            // Route to shopify fulfillment flow for shipped/fulfilled orders
+                || normalizedStatus.contains("SHPFR1") || normalizedStatus.contains("SHIPPED")
+                || normalizedStatus.contains("LABEL GENERATED") || normalizedStatus.contains("PICKUP GENERATED")) {
+            // Shipment booked / shipped / out for pickup / label generated: create or update Shopify fulfillment,
+            // send AWB + URL on fulfillmentCreate, then fulfillment event (GraphQL).
             return shopifyFulfillmentFlowService.processShopifyFulfillment(order);
         } else if (normalizedStatus.contains("RTO") || normalizedStatus.contains("RETURN TO ORIGIN")) {
             // Handle RTO case - you may want to create a separate service for this

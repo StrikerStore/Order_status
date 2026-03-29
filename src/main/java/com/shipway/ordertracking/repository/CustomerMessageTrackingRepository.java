@@ -2,12 +2,14 @@ package com.shipway.ordertracking.repository;
 
 import com.shipway.ordertracking.entity.CustomerMessageTracking;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
 import java.util.List;
 
-public interface CustomerMessageTrackingRepository extends JpaRepository<CustomerMessageTracking, Integer> {
+public interface CustomerMessageTrackingRepository extends JpaRepository<CustomerMessageTracking, Integer>,
+        JpaSpecificationExecutor<CustomerMessageTracking> {
 
     boolean existsByOrderIdAndAccountCodeAndMessageStatus(String orderId, String accountCode, String messageStatus);
 
@@ -26,4 +28,7 @@ public interface CustomerMessageTrackingRepository extends JpaRepository<Custome
             "WHERE cmt.message_status = 'sent_delivered' " +
             "AND DATE(cmt.created_at) = DATE_SUB(CURDATE(), INTERVAL 1 DAY)", nativeQuery = true)
     List<OrderPhoneProjection> findOrderIdAndPhoneForSentDeliveredYesterday();
+
+    @Query("SELECT DISTINCT c.messageStatus FROM CustomerMessageTracking c WHERE c.messageStatus IS NOT NULL ORDER BY c.messageStatus")
+    List<String> findDistinctMessageStatuses();
 }

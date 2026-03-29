@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
     <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+    <!-- So logging.level.* in application.properties / env (e.g. Railway) still applies -->
+    <springProperty name="ROOT_LOG_LEVEL" source="logging.level.root" defaultValue="INFO"/>
+    <springProperty name="APP_LOG_LEVEL" source="logging.level.com.shipway.ordertracking" defaultValue="INFO"/>
     
     <property name="LOG_FILE" value="${LOG_FILE:-logs/application.log}"/>
     <property name="LOG_FILE_MAX_SIZE" value="5MB"/>
@@ -34,13 +38,20 @@
         </rollingPolicy>
     </appender>
     
-    <!-- Root Logger -->
-    <root level="INFO">
+    <!--
+      App logs: own appenders + additivity=false so they still print even if root is WARN/ERROR
+      (some hosts set LOG_LEVEL=error or similar).
+    -->
+    <logger name="com.shipway.ordertracking" level="${APP_LOG_LEVEL:-INFO}" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </logger>
+
+    <!-- Root Logger (framework + third-party) -->
+    <root level="${ROOT_LOG_LEVEL:-INFO}">
         <appender-ref ref="CONSOLE"/>
         <appender-ref ref="FILE"/>
     </root>
-    
-    <!-- Application Logger -->
-    <logger name="com.shipway.ordertracking" level="INFO"/>
+
     <logger name="org.springframework.web" level="INFO"/>
 </configuration>

@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Order tracking — home</title>
+    <style>
+        :root {
+            --bg: #0f1419;
+            --surface: #1a2332;
+            --border: #2d3a4d;
+            --text: #e7edf4;
+            --muted: #8b9cb3;
+            --accent: #3d9aed;
+            --accent-hover: #5eb0ff;
+            --success: #3ecf8e;
+            --radius: 10px;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: "Segoe UI", system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            min-height: 100vh;
+            line-height: 1.5;
+        }
+        .wrap {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 2.5rem 1.25rem 3rem;
+        }
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 0 0 0.35rem;
+            letter-spacing: -0.02em;
+        }
+        .sub {
+            color: var(--muted);
+            font-size: 0.95rem;
+            margin: 0 0 2rem;
+        }
+        ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+        }
+        li a {
+            display: block;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1rem 1.15rem;
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        li a:hover {
+            border-color: var(--accent);
+            background: rgba(61, 154, 237, 0.08);
+            color: var(--accent-hover);
+        }
+        li p {
+            margin: 0.35rem 0 0;
+            font-size: 0.82rem;
+            font-weight: 400;
+            color: var(--muted);
+            line-height: 1.45;
+        }
+        .section-title {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--muted);
+            margin: 1.75rem 0 0.65rem;
+        }
+        .section-title:first-of-type { margin-top: 0; }
+        code {
+            font-size: 0.8em;
+            color: #b8c9dc;
+        }
+        .badge {
+            display: inline-block;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--success);
+            border: 1px solid rgba(62, 207, 142, 0.4);
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            margin-left: 0.35rem;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>Order tracking service</h1>
+    <p class="sub">Quick links to internal tools and API docs.</p>
+
+    <p class="section-title">HTML pages</p>
+    <ul>
+        <li>
+            <a th:href="@{/ui/fulfillment}">Shopify fulfillment</a>
+            <p>Unfulfilled orders + <code>order_tracking</code>, apply tracking to Shopify (per row or all).</p>
+        </li>
+        <li>
+            <a th:href="@{/ui/message-tracking}">Customer message tracking</a>
+            <p>Browse <code>customer_message_tracking</code> by account, order id, and message status.</p>
+        </li>
+    </ul>
+
+    <p class="section-title">API documentation</p>
+    <ul>
+        <li>
+            <a th:href="@{/swagger-ui.html}">Swagger UI<span class="badge">OpenAPI</span></a>
+            <p>Interactive REST docs (springdoc). Default path <code>/swagger-ui.html</code>.</p>
+        </li>
+        <li>
+            <a th:href="@{/v3/api-docs}">OpenAPI JSON</a>
+            <p>Raw <code>/v3/api-docs</code> for clients or import into other tools.</p>
+        </li>
+    </ul>
+</div>
+</body>
+</html>

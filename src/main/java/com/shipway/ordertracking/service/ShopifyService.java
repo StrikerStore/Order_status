@@ -220,91 +220,28 @@ public class ShopifyService {
     }
 
     /**
-     * Update fulfillment tracking information
+     * Updates shipment / delivery state on a fulfillment via GraphQL {@code fulfillmentEventCreate} only.
+     * Tracking number and URL are expected to be set on {@code fulfillmentCreate} (or elsewhere); there is no REST
+     * {@code update_tracking} fallback.
+     *
+     * @param trackingNumber retained for caller compatibility; not sent by this method
      */
     public boolean updateFulfillmentTracking(ShopifyAccount account, Long orderId, Long fulfillmentId,
             String trackingNumber, String status) {
         try {
-            if (status != null && !status.isEmpty()) {
-                // Use GraphQL mutation for status updates (IN_TRANSIT, OUT_FOR_DELIVERY,
-                // DELIVERED, etc.)
-                // This updates the shipment status visible in Shopify admin/customer page
-                boolean eventCreated = createFulfillmentEvent(account, fulfillmentId, status);
-                if (eventCreated) {
-                    log.info("✅ Fulfillment event created successfully for order {} (status: {})", orderId, status);
-                } else {
-                    log.warn(
-                            "⚠️ Failed to create fulfillment event for order {} (status: {}), falling back to REST update (may not update status visible in admin)",
-                            orderId, status);
-                }
-
-                // If tracking number is present, we still need to update it via REST if it
-                // wasn't set during fulfillment creation
-                if (trackingNumber != null && !trackingNumber.isEmpty()) {
-                    // Continue to REST update below for tracking number
-                } else {
-                    // If only status update was needed and event created, we are done
-                    return eventCreated;
-                }
-            }
-
-            // Shopify REST: POST
-            // /admin/api/{version}/fulfillments/{fulfillment_id}/update_tracking.json
-            // (order_id not in path)
-            String apiUrl = account.getApiUrl() + "/fulfillments/" + fulfillmentId + "/update_tracking.json";
-
-            // Build request body
-            Map<String, Object> tracking = new HashMap<>();
-            if (trackingNumber != null && !trackingNumber.isEmpty()) {
-                tracking.put("number", trackingNumber);
-            }
-            // For REST, we still send status if we are here (fallback or tracking number
-            // update),
-            // but GraphQL event is the primary way to set "Out for Delivery"/"Delivered"
-            // etc.
-            if (status != null) {
-                tracking.put("status", mapStatusToShopifyStatus(status));
-            }
-
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("fulfillment", Map.of("tracking_info", tracking));
-
-            HttpHeaders headers = createHeaders(account);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-            // Log JSON request body
-            try {
-                String jsonRequest = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(requestBody);
-                log.info("📤 Shopify API Request JSON (Update Fulfillment Tracking - Order: {}):\n{}", orderId,
-                        jsonRequest);
-            } catch (Exception e) {
-                log.warn("Failed to serialize Shopify request to JSON: {}", e.getMessage());
-            }
-
-            log.info("Updating Shopify fulfillment tracking for order {}: {}", orderId, tracking);
-
-            ResponseEntity<Map> response = restTemplate.exchange(
-                    apiUrl,
-                    HttpMethod.POST,
-                    entity,
-                    Map.class);
-
-            logShopifyResponse("Update Fulfillment Tracking - Order: " + orderId, response);
-
-            if (response.getStatusCode().is2xxSuccessful()) {
-                log.info("✅ Shopify fulfillment tracking updated successfully for order {}", orderId);
-                return true;
-            } else {
-                log.error("❌ Shopify API returned non-2xx status: {}", response.getStatusCode());
+            if (status == null || status.isEmpty()) {
+                log.warn("updateFulfillmentTracking: non-empty status is required (GraphQL only) for order {}", orderId);
                 return false;
             }
-
-        } catch (RestClientException e) {
-            log.error("❌ Error calling Shopify API: {}", e.getMessage(), e);
-            return false;
+            boolean ok = createFulfillmentEvent(account, fulfillmentId, status);
+            if (ok) {
+                log.info("✅ Fulfillment event created for order {} (status: {})", orderId, status);
+            } else {
+                log.warn("❌ Fulfillment event failed for order {} (status: {}) — no REST fallback", orderId, status);
+            }
+            return ok;
         } catch (Exception e) {
-            log.error("❌ Unexpected error updating Shopify fulfillment: {}", e.getMessage(), e);
+            log.error("❌ Unexpected error in updateFulfillmentTracking: {}", e.getMessage(), e);
             return false;
         }
     }
@@ -385,7 +322,7 @@ public class ShopifyService {
 
         // Default fallbacks or map to generic 'IN_TRANSIT' if appropriate, or return
         // null to skip
-        return "IN_TRANSIT";
+        return null;
     }
 
     /**
@@ -399,31 +336,6 @@ public class ShopifyService {
         if (account == null)
             return false;
         return updateFulfillmentTracking(account, orderId, fulfillmentId, trackingNumber, status);
-    }
-
-    /**
-     * Map internal status to Shopify tracking status
-     * Shopify accepts: "in_transit", "out_for_delivery", "delivered", "failure",
-     * "cancelled"
-     */
-    private String mapStatusToShopifyStatus(String status) {
-        if (status == null) {
-            return "in_transit";
-        }
-
-        String normalized = status.trim().toUpperCase().replace("_", " ");
-
-        if (normalized.contains("IN TRANSIT")) {
-            return "in_transit";
-        } else if (normalized.contains("OUT FOR DELIVERY")) {
-            return "out_for_delivery";
-        } else if (normalized.equals("DELIVERED")) {
-            return "delivered";
-        } else if (normalized.contains("RTO") || normalized.contains("RETURN")) {
-            return "failure";
-        } else {
-            return "in_transit"; // Default
-        }
     }
 
     /**
@@ -1722,5 +1634,166 @@ public class ShopifyService {
             }
         }
         return details;
+    }
+
+    /**
+     * Paginated {@code orders} search (e.g. {@code fulfillment_status:unfulfilled}), sorted by
+     * {@code CREATED_AT} descending. Returns a map from
+     * {@linkplain #normalizeShopifyOrderNameKey(String) normalized} order {@code name} to the node
+     * ({@code id}, {@code name}, {@code createdAt}, {@code displayFulfillmentStatus}, …).
+     *
+     * @param accountCode       STRI / DRIB / …
+     * @param ordersSearchQuery Shopify order search string (same as GraphQL {@code query} argument)
+     * @param maxTotalOrders    safety cap across all pages (stops pagination when reached)
+     */
+    public Map<String, Map<String, Object>> loadOrderNodesBySearchQueryPaged(String accountCode,
+            String ordersSearchQuery, int maxTotalOrders) {
+        Map<String, Map<String, Object>> byKey = new HashMap<>();
+        if (accountCode == null || accountCode.isBlank() || ordersSearchQuery == null
+                || ordersSearchQuery.isBlank() || maxTotalOrders <= 0) {
+            return byKey;
+        }
+
+        ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+        if (account == null) {
+            log.warn("Shopify account not found for bulk orders query: {}", accountCode);
+            return byKey;
+        }
+
+        String graphQLQuery = """
+                query UnfulfilledOrdersBulk($first: Int!, $after: String, $q: String!) {
+                  orders(first: $first, after: $after, query: $q, sortKey: CREATED_AT, reverse: true) {
+                    pageInfo {
+                      hasNextPage
+                      endCursor
+                    }
+                    edges {
+                      node {
+                        id
+                        name
+                        createdAt
+                        displayFulfillmentStatus
+                      }
+                    }
+                  }
+                }
+                """;
+
+        String cursor = null;
+        int loaded = 0;
+        int cap = Math.min(maxTotalOrders, 50_000);
+
+        while (loaded < cap) {
+            int pageSize = Math.min(250, cap - loaded);
+            Map<String, Object> variables = new HashMap<>();
+            variables.put("first", pageSize);
+            variables.put("q", ordersSearchQuery.trim());
+            if (cursor != null) {
+                variables.put("after", cursor);
+            }
+
+            Map<String, Object> response = callGraphQL(account, graphQLQuery, variables, "Orders bulk by search query");
+            if (response == null) {
+                log.warn("Bulk orders GraphQL returned null (account: {})", accountCode);
+                break;
+            }
+
+            List<Map<String, Object>> nodes = parseOrderNodesFromOrdersConnection(response);
+            for (Map<String, Object> node : nodes) {
+                Object nameObj = node.get("name");
+                String name = nameObj != null ? nameObj.toString() : "";
+                String key = normalizeShopifyOrderNameKey(name);
+                if (!key.isEmpty()) {
+                    byKey.put(key, node);
+                }
+                loaded++;
+                if (loaded >= cap) {
+                    break;
+                }
+            }
+
+            Map<String, Object> pageInfo = parseOrdersPageInfo(response);
+            boolean hasNext = Boolean.TRUE.equals(pageInfo.get("hasNextPage"));
+            Object end = pageInfo.get("endCursor");
+            if (!hasNext || end == null) {
+                break;
+            }
+            cursor = end.toString();
+            if (nodes.isEmpty()) {
+                break;
+            }
+        }
+
+        log.info("Bulk orders query loaded {} node(s), {} distinct name key(s) for account {}",
+                loaded, byKey.size(), accountCode);
+        return byKey;
+    }
+
+    /**
+     * Normalizes Shopify GraphQL {@code name} (e.g. {@code #253243}) for matching {@code order_tracking.order_id}:
+     * strips every {@code #}, same idea as SQL {@code REPLACE(TRIM(order_id), '#', '')}.
+     */
+    public static String normalizeShopifyOrderNameKey(String nameOrOrderId) {
+        if (nameOrOrderId == null) {
+            return "";
+        }
+        return nameOrOrderId.trim().replace("#", "").trim();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> parseOrderNodesFromOrdersConnection(Map<String, Object> response) {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        try {
+            Object dataObj = response.get("data");
+            if (!(dataObj instanceof Map)) {
+                return nodes;
+            }
+            Map<String, Object> data = (Map<String, Object>) dataObj;
+            Object ordersObj = data.get("orders");
+            if (!(ordersObj instanceof Map)) {
+                return nodes;
+            }
+            Map<String, Object> orders = (Map<String, Object>) ordersObj;
+            Object edgesObj = orders.get("edges");
+            if (!(edgesObj instanceof List)) {
+                return nodes;
+            }
+            for (Object edgeObj : (List<?>) edgesObj) {
+                if (!(edgeObj instanceof Map)) {
+                    continue;
+                }
+                Map<String, Object> edge = (Map<String, Object>) edgeObj;
+                Object nodeObj = edge.get("node");
+                if (nodeObj instanceof Map) {
+                    nodes.add((Map<String, Object>) nodeObj);
+                }
+            }
+        } catch (Exception e) {
+            log.debug("parseOrderNodesFromOrdersConnection failed: {}", e.getMessage());
+        }
+        return nodes;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseOrdersPageInfo(Map<String, Object> response) {
+        try {
+            Object dataObj = response.get("data");
+            if (!(dataObj instanceof Map)) {
+                return Map.of();
+            }
+            Map<String, Object> data = (Map<String, Object>) dataObj;
+            Object ordersObj = data.get("orders");
+            if (!(ordersObj instanceof Map)) {
+                return Map.of();
+            }
+            Map<String, Object> orders = (Map<String, Object>) ordersObj;
+            Object pi = orders.get("pageInfo");
+            if (pi instanceof Map) {
+                return (Map<String, Object>) pi;
+            }
+        } catch (Exception e) {
+            log.debug("parseOrdersPageInfo failed: {}", e.getMessage());
+        }
+        return Map.of();
     }
 }
