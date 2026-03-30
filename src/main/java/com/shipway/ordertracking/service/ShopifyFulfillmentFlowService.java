@@ -140,7 +140,7 @@ public class ShopifyFulfillmentFlowService {
         }
         if (fulfillmentId != null) {
             if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
-                    "fulfilled")) {
+                    "LABEL PRINTED")) {
                 log.error("Failed to update fulfillment tracking (fulfilled path) for order {}, stopping flow",
                         orderId);
                 return false;
