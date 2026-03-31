@@ -69,16 +69,16 @@ public class InTransitFlowService {
             return false;
         }
 
-        String accountCode = order.getAccountCode();
-        if (accountCode == null || accountCode.isEmpty()) {
-            log.warn("Account code is missing for order: {}", order.getOrderId());
+        String brandName = order.resolveBrandName();
+        if (brandName == null || brandName.isEmpty()) {
+            log.warn("Brand name is missing for order: {}", order.getOrderId());
             return false;
         }
 
         String orderId = order.getOrderId();
 
         // CHECK 2: Database check - skip if already processed (sent or failed)
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, IN_TRANSIT_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, IN_TRANSIT_STATUSES)) {
             log.info("Order {} already has in transit status in database, skipping in transit flow", orderId);
             return true;
         }
@@ -88,13 +88,13 @@ public class InTransitFlowService {
             log.info(
                     "Order {} detected as clone (contains '_'), skipping Shopify lookup and fulfillment. Sending Botspace.",
                     orderId);
-            return sendInTransitBotspaceMessage(accountCode, order);
+            return sendInTransitBotspaceMessage(brandName, order);
         }
 
         // 1) GraphQL: get order with displayFulfillmentStatus
-        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(accountCode, orderId);
+        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(brandName, orderId);
         if (orderNode == null) {
-            log.warn("Order {} not found via GraphQL (account: {})", orderId, accountCode);
+            log.warn("Order {} not found via GraphQL (brand: {})", orderId, brandName);
             return false;
         }
 
@@ -103,7 +103,7 @@ public class InTransitFlowService {
                 : null;
 
         if ("FULFILLED".equalsIgnoreCase(displayStatus)) {
-            return processInTransitWhenFulfilled(accountCode, orderId, order, orderNode);
+            return processInTransitWhenFulfilled(brandName, orderId, order, orderNode);
         }
 
         // UNFULFILLED or null: get fulfillment orders, find OPEN, create fulfillment if
@@ -114,16 +114,16 @@ public class InTransitFlowService {
             return false;
         }
 
-        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(accountCode, orderGid);
+        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(brandName, orderGid);
         if (fulfillmentOrdersData == null) {
-            log.warn("Could not get fulfillment orders for order {} (account: {})", orderId, accountCode);
+            log.warn("Could not get fulfillment orders for order {} (brand: {})", orderId, brandName);
             return false;
         }
 
         String openFulfillmentOrderId = shopifyService.getOpenFulfillmentOrderIdFromEdges(fulfillmentOrdersData);
         if (openFulfillmentOrderId == null || openFulfillmentOrderId.isEmpty()) {
             log.warn("No OPEN fulfillment order for order {} (account: {}), skipping in-transit flow", orderId,
-                    accountCode);
+                    brandName);
             return false;
         }
 
@@ -135,32 +135,32 @@ public class InTransitFlowService {
         }
 
         String trackingUrl = buildTrackingUrl(order);
-        Long fulfillmentId = shopifyService.createFulfillment(accountCode, numericOrderId, openFulfillmentOrderId,
+        Long fulfillmentId = shopifyService.createFulfillment(brandName, numericOrderId, openFulfillmentOrderId,
                 order.getAwb(), trackingUrl);
 
         if (fulfillmentId == null) {
             log.warn("Creation returned null, checking for existing fulfillment ID for order {}", orderId);
-            fulfillmentId = shopifyService.getFulfillmentId(accountCode, numericOrderId);
+            fulfillmentId = shopifyService.getFulfillmentId(brandName, numericOrderId);
         }
 
         if (fulfillmentId == null) {
-            log.warn("Failed to create/find fulfillment for order {} (account: {})", orderId, accountCode);
+            log.warn("Failed to create/find fulfillment for order {} (brand: {})", orderId, brandName);
             return false;
         }
 
         // Use the ID directly for tracking update
-        if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
+        if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId, order.getAwb(),
                 "in_transit")) {
             log.error("Failed to update fulfillment tracking for order {}, stopping flow", orderId);
             return false;
         }
 
-        return proceedWithTagAndBotspace(accountCode, orderId, numericOrderId, order, fulfillmentOrdersData);
+        return proceedWithTagAndBotspace(brandName, orderId, numericOrderId, order, fulfillmentOrdersData);
     }
 
-    private boolean processInTransitWhenFulfilled(String accountCode, String orderId,
+    private boolean processInTransitWhenFulfilled(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, IN_TRANSIT_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, IN_TRANSIT_STATUSES)) {
             log.info("Order {} already has in transit status in database, skipping in transit flow", orderId);
             return true;
         }
@@ -185,7 +185,7 @@ public class InTransitFlowService {
             }
         }
         if (fulfillmentId != null) {
-            if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
+            if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId, order.getAwb(),
                     "in_transit")) {
                 log.error("Failed to update fulfillment tracking (fulfilled path) for order {}, stopping flow",
                         orderId);
@@ -193,22 +193,22 @@ public class InTransitFlowService {
             }
         }
 
-        return sendInTransitBotspaceMessage(accountCode, order);
+        return sendInTransitBotspaceMessage(brandName, order);
     }
 
-    private boolean proceedWithTagAndBotspace(String accountCode, String orderId, Long numericOrderId,
+    private boolean proceedWithTagAndBotspace(String brandName, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, IN_TRANSIT_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, IN_TRANSIT_STATUSES)) {
             log.info("Order {} already has in transit status in database, skipping in transit notification", orderId);
             return true;
         }
-        return sendInTransitBotspaceMessage(accountCode, order);
+        return sendInTransitBotspaceMessage(brandName, order);
     }
 
-    private boolean sendInTransitBotspaceMessage(String accountCode, StatusUpdateWebhook.OrderStatus order) {
-        String templateId = getTemplateIdForAccount(accountCode);
+    private boolean sendInTransitBotspaceMessage(String brandName, StatusUpdateWebhook.OrderStatus order) {
+        String templateId = getTemplateIdForBrand(brandName);
         if (templateId == null || templateId.isEmpty()) {
-            log.warn("Template ID not configured for account code: {} (order: {})", accountCode, order.getOrderId());
+            log.warn("Template ID not configured for brand: {} (order: {})", brandName, order.getOrderId());
             return false;
         }
 
@@ -227,7 +227,7 @@ public class InTransitFlowService {
             request.setCards(cards);
         }
 
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, order.getOrderId(), "sent_inTransit",
+        boolean sent = botspaceService.sendTemplateMessage(brandName, request, order.getOrderId(), "sent_inTransit",
                 "failed_inTransit");
         if (sent) {
             log.info("✅ In transit notification sent successfully for order: {} to phone: {}", order.getOrderId(),
@@ -270,12 +270,12 @@ public class InTransitFlowService {
     }
 
     /**
-     * Build tracking URL from AWB using account-specific template
+     * Build tracking URL from AWB using brand-specific Shopify template
      */
     private String buildTrackingUrl(StatusUpdateWebhook.OrderStatus order) {
         if (order.getAwb() != null && !order.getAwb().isEmpty()) {
-            String accountCode = order.getAccountCode();
-            ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+            String brandName = order.resolveBrandName();
+            ShopifyAccount account = shopifyProperties.getAccountByCode(brandName);
 
             if (account != null && account.getTrackingUrlTemplate() != null
                     && !account.getTrackingUrlTemplate().isEmpty()) {
@@ -290,18 +290,17 @@ public class InTransitFlowService {
     }
 
     /**
-     * Get template ID for in transit status based on account code
+     * Botspace template ID for in-transit, keyed by resolved brand (e.g. STRI).
      */
-    private String getTemplateIdForAccount(String accountCode) {
-        // Get the Botspace account for this order
+    private String getTemplateIdForBrand(String brandName) {
         BotspaceAccount botspaceAccount = botspaceProperties
-                .getAccountByCode(accountCode);
+                .getAccountByCode(brandName);
 
         if (botspaceAccount != null && botspaceAccount.getInTransitTemplateId() != null) {
             return botspaceAccount.getInTransitTemplateId();
         }
 
-        log.warn("In transit template ID not found for account code: {}", accountCode);
+        log.warn("In transit template ID not found for brand: {}", brandName);
         return null;
     }
 
@@ -310,22 +309,22 @@ public class InTransitFlowService {
      */
     private void updateShopifyStatus(StatusUpdateWebhook.OrderStatus order) {
         try {
-            String accountCode = order.getAccountCode();
+            String brandName = order.resolveBrandName();
             String orderId = order.getOrderId();
             String trackingNumber = order.getAwb();
             String status = order.getCurrentShipmentStatus();
 
             if (orderId != null && !orderId.isEmpty()) {
-                if (accountCode == null || accountCode.isEmpty()) {
-                    log.warn("Cannot update Shopify status: account code is missing for order: {}", orderId);
+                if (brandName == null || brandName.isEmpty()) {
+                    log.warn("Cannot update Shopify status: brand name is missing for order: {}", orderId);
                     return;
                 }
 
-                boolean updated = shopifyService.updateOrderStatus(accountCode, orderId, trackingNumber, status);
+                boolean updated = shopifyService.updateOrderStatus(brandName, orderId, trackingNumber, status);
                 if (updated) {
-                    log.info("✅ Shopify status updated successfully for order: {} (account: {})", orderId, accountCode);
+                    log.info("✅ Shopify status updated successfully for order: {} (brand: {})", orderId, brandName);
                 } else {
-                    log.warn("⚠️ Failed to update Shopify status for order: {} (account: {})", orderId, accountCode);
+                    log.warn("⚠️ Failed to update Shopify status for order: {} (brand: {})", orderId, brandName);
                 }
             } else {
                 log.warn("Cannot update Shopify status: order ID is missing");

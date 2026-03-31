@@ -86,6 +86,44 @@
 
 	<build>
 		<plugins>
+			<!-- Code coverage: run `mvn test`, then open target/site/jacoco/index.html -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.12</version>
+				<executions>
+					<execution>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+						<configuration>
+							<!-- Omit integration-heavy or boilerplate layers from coverage totals/report -->
+							<excludes>
+								<exclude>com/shipway/ordertracking/entity/**</exclude>
+								<exclude>com/shipway/ordertracking/repository/**</exclude>
+								<!-- Data transfer objects (minimal logic; covered indirectly via API/service tests) -->
+								<exclude>com/shipway/ordertracking/dto/**</exclude>
+								<!-- Spring @Configuration / beans (low value for branch coverage in reports) -->
+								<exclude>com/shipway/ordertracking/config/**</exclude>
+								<exclude>**/BotspaceService.class</exclude>
+								<exclude>**/ShopifyService.class</exclude>
+								<!-- Controllers not covered by tests (Thymeleaf UI / config pages) -->
+								<exclude>**/HomeController.class</exclude>
+								<exclude>**/ConfigController.class</exclude>
+								<exclude>**/FulfillmentUiController.class</exclude>
+								<exclude>**/MessageTrackingUiController.class</exclude>
+							</excludes>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>

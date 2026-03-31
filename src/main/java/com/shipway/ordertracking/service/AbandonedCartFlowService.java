@@ -59,12 +59,12 @@ public class AbandonedCartFlowService {
             log.info("Using abandoned-cart test phone override");
         }
 
-        // Extract account code from landing_page_url or checkout_url
-        String accountCode = extractAccountCode(webhook);
-        log.info("Extracted account code: {} for abandoned cart", accountCode);
+        // Brand key (STRI / DRIB / …) from landing_page_url or checkout_url
+        String brandName = extractBrandNameFromWebhook(webhook);
+        log.info("Resolved brand name: {} for abandoned cart", brandName);
 
         // Build template variables [first_name, recovery_url (onlineStoreUrl or checkout_url), product_id]
-        List<String> templateVariables = buildTemplateVariables(webhook, accountCode);
+        List<String> templateVariables = buildTemplateVariables(webhook, brandName);
 
         // First item image URL for mediaVariable and cards (Botspace template expects these)
         String firstItemImgUrl = getFirstItemImgUrl(attrs);
@@ -77,14 +77,14 @@ public class AbandonedCartFlowService {
         String finalFirstItemImgUrl = firstItemImgUrl;
         CompletableFuture.runAsync(() -> {
             try {
-                sendAbandonedCartNotification(accountCode, customerPhone, templateVariables, finalCartToken, finalFirstItemImgUrl);
+                sendAbandonedCartNotification(brandName, customerPhone, templateVariables, finalCartToken, finalFirstItemImgUrl);
             } catch (Exception e) {
                 log.error("Error in abandoned cart notification task for phone: {}", customerPhone, e);
             }
         }, CompletableFuture.delayedExecutor(1, TimeUnit.MINUTES));
 
-        log.info("Abandoned cart notification scheduled for phone: {} (account: {}), will send in 1 minute",
-                customerPhone, accountCode);
+        log.info("Abandoned cart notification scheduled for phone: {} (brand: {}), will send in 1 minute",
+                customerPhone, brandName);
         return true;
     }
 
@@ -107,14 +107,14 @@ public class AbandonedCartFlowService {
      * Matches Botspace API: variables [first_name, recovery_url, product_id], mediaVariable and cards from first item img_url.
      */
     @Async
-    private void sendAbandonedCartNotification(String accountCode, String phone, List<String> templateVariables,
+    private void sendAbandonedCartNotification(String brandName, String phone, List<String> templateVariables,
             String cartToken, String firstItemImgUrl) {
         try {
-            log.info("Sending abandoned cart notification for phone: {} (account: {})", phone, accountCode);
+            log.info("Sending abandoned cart notification for phone: {} (brand: {})", phone, brandName);
 
-            String templateId = getTemplateIdForAccount(accountCode);
+            String templateId = getTemplateIdForBrand(brandName);
             if (templateId == null || templateId.isEmpty()) {
-                log.warn("Template ID not configured for account code: {} (phone: {})", accountCode, phone);
+                log.warn("Template ID not configured for brand: {} (phone: {})", brandName, phone);
                 return;
             }
 
@@ -130,15 +130,15 @@ public class AbandonedCartFlowService {
                 request.setCards(List.of(new BotspaceMessageRequest.Card(firstItemImgUrl)));
             }
 
-            boolean sent = botspaceService.sendTemplateMessage(accountCode, request, cartToken,
+            boolean sent = botspaceService.sendTemplateMessage(brandName, request, cartToken,
                     "sent_abandonedCart", "failed_abandonedCart");
 
             if (sent) {
-                log.info("✅ Abandoned cart notification sent successfully for phone: {} (account: {})",
-                        formattedPhone, accountCode);
+                log.info("✅ Abandoned cart notification sent successfully for phone: {} (brand: {})",
+                        formattedPhone, brandName);
             } else {
-                log.error("❌ Failed to send abandoned cart notification for phone: {} (account: {})",
-                        formattedPhone, accountCode);
+                log.error("❌ Failed to send abandoned cart notification for phone: {} (brand: {})",
+                        formattedPhone, brandName);
             }
 
         } catch (Exception e) {
@@ -148,9 +148,9 @@ public class AbandonedCartFlowService {
     }
 
     /**
-     * Extract account code from attributes.custom_attributes.landing_page_url or attributes.checkout_url
+     * Resolve brand key from {@code custom_attributes.landing_page_url} or {@code checkout_url} host.
      */
-    private String extractAccountCode(FasterrAbandonedCartWebhook webhook) {
+    private String extractBrandNameFromWebhook(FasterrAbandonedCartWebhook webhook) {
         String landingPageUrl = null;
         if (webhook.getAttributes() != null && webhook.getAttributes().getCustomAttributes() != null) {
             landingPageUrl = webhook.getAttributes().getCustomAttributes().getLandingPageUrl();
@@ -171,7 +171,6 @@ public class AbandonedCartFlowService {
                 if (firstDotIndex > 0) {
                     String domainPart = host.substring(0, firstDotIndex);
                     log.debug("Extracted domain part '{}' from URL: {}", domainPart, landingPageUrl);
-                    // Map store domain to config account code (STRI, DRIB)
                     String lower = domainPart.toLowerCase();
                     if ("thestrikerstore".equals(lower)) {
                         return "STRI";
@@ -182,10 +181,10 @@ public class AbandonedCartFlowService {
                     return domainPart.toUpperCase();
                 }
             } catch (Exception e) {
-                log.warn("Could not parse URL for account code extraction: {}", landingPageUrl, e);
+                log.warn("Could not parse URL for brand name extraction: {}", landingPageUrl, e);
             }
         }
-        log.debug("Using default account code 'DEFAULT'");
+        log.debug("Using default brand name 'DEFAULT'");
         return "DEFAULT";
     }
 
@@ -193,7 +192,7 @@ public class AbandonedCartFlowService {
      * Build template variables to match Botspace abandoned_cart template:
      * [0] first_name, [1] product onlineStoreUrl (from Shopify GraphQL) or checkout_url fallback, [2] first item product_id
      */
-    private List<String> buildTemplateVariables(FasterrAbandonedCartWebhook webhook, String accountCode) {
+    private List<String> buildTemplateVariables(FasterrAbandonedCartWebhook webhook, String brandName) {
         List<String> variables = new ArrayList<>();
         FasterrAbandonedCartWebhook.Attributes attrs = webhook.getAttributes();
         String firstName = attrs != null && attrs.getFirstName() != null ? attrs.getFirstName() : "";
@@ -203,8 +202,8 @@ public class AbandonedCartFlowService {
         String recoveryUrl = "";
         if (attrs != null && attrs.getItems() != null && !attrs.getItems().isEmpty()) {
             Long productId = attrs.getItems().get(0).getProductId();
-            if (productId != null && accountCode != null && !accountCode.isEmpty()) {
-                String onlineStoreUrl = shopifyService.getProductOnlineStoreUrl(accountCode, productId);
+            if (productId != null && brandName != null && !brandName.isEmpty()) {
+                String onlineStoreUrl = shopifyService.getProductOnlineStoreUrl(brandName, productId);
                 if (onlineStoreUrl != null && !onlineStoreUrl.isEmpty()) {
                     recoveryUrl = onlineStoreUrl;
                 }
@@ -232,18 +231,14 @@ public class AbandonedCartFlowService {
         return attrs.getItems().get(0).getImgUrl();
     }
 
-    /**
-     * Get template ID for abandoned cart status based on account code
-     */
-    private String getTemplateIdForAccount(String accountCode) {
-        // Get Botspace account config
-        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(accountCode);
+    private String getTemplateIdForBrand(String brandName) {
+        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(brandName);
 
         if (botspaceAccount != null && botspaceAccount.getAbandonedCartTemplateId() != null) {
             return botspaceAccount.getAbandonedCartTemplateId();
         }
 
-        log.warn("Abandoned cart template ID not found for account code: {}", accountCode);
+        log.warn("Abandoned cart template ID not found for brand: {}", brandName);
         return null;
     }
 }

@@ -69,16 +69,16 @@ public class OutForDeliveryFlowService {
             return false;
         }
 
-        String accountCode = order.getAccountCode();
-        if (accountCode == null || accountCode.isEmpty()) {
-            log.warn("Account code is missing for order: {}", order.getOrderId());
+        String brandName = order.resolveBrandName();
+        if (brandName == null || brandName.isEmpty()) {
+            log.warn("Brand name is missing for order: {}", order.getOrderId());
             return false;
         }
 
         String orderId = order.getOrderId();
 
         // CHECK 2: Database check - skip if already processed (sent or failed)
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, OUT_FOR_DELIVERY_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, OUT_FOR_DELIVERY_STATUSES)) {
             log.info("Order {} already has out for delivery status in database, skipping out for delivery flow", orderId);
             return true;
         }
@@ -88,13 +88,13 @@ public class OutForDeliveryFlowService {
             log.info(
                     "Order {} detected as clone (contains '_'), skipping Shopify lookup and fulfillment. Sending Botspace.",
                     orderId);
-            return sendOutForDeliveryBotspaceMessage(accountCode, order);
+            return sendOutForDeliveryBotspaceMessage(brandName, order);
         }
 
         // 1) GraphQL: get order with displayFulfillmentStatus
-        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(accountCode, orderId);
+        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(brandName, orderId);
         if (orderNode == null) {
-            log.warn("Order {} not found via GraphQL (account: {})", orderId, accountCode);
+            log.warn("Order {} not found via GraphQL (brand: {})", orderId, brandName);
             return false;
         }
 
@@ -103,7 +103,7 @@ public class OutForDeliveryFlowService {
                 : null;
 
         if ("FULFILLED".equalsIgnoreCase(displayStatus)) {
-            return processOutForDeliveryWhenFulfilled(accountCode, orderId, order, orderNode);
+            return processOutForDeliveryWhenFulfilled(brandName, orderId, order, orderNode);
         }
 
         // UNFULFILLED or null: get fulfillment orders, find OPEN, create fulfillment if
@@ -114,16 +114,16 @@ public class OutForDeliveryFlowService {
             return false;
         }
 
-        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(accountCode, orderGid);
+        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(brandName, orderGid);
         if (fulfillmentOrdersData == null) {
-            log.warn("Could not get fulfillment orders for order {} (account: {})", orderId, accountCode);
+            log.warn("Could not get fulfillment orders for order {} (brand: {})", orderId, brandName);
             return false;
         }
 
         String openFulfillmentOrderId = shopifyService.getOpenFulfillmentOrderIdFromEdges(fulfillmentOrdersData);
         if (openFulfillmentOrderId == null || openFulfillmentOrderId.isEmpty()) {
-            log.warn("No OPEN fulfillment order for order {} (account: {}), skipping out for delivery flow", orderId,
-                    accountCode);
+            log.warn("No OPEN fulfillment order for order {} (brand: {}), skipping out for delivery flow", orderId,
+                    brandName);
             return false;
         }
 
@@ -135,32 +135,32 @@ public class OutForDeliveryFlowService {
         }
 
         String trackingUrl = buildTrackingUrl(order);
-        Long fulfillmentId = shopifyService.createFulfillment(accountCode, numericOrderId, openFulfillmentOrderId,
+        Long fulfillmentId = shopifyService.createFulfillment(brandName, numericOrderId, openFulfillmentOrderId,
                 order.getAwb(), trackingUrl);
 
         if (fulfillmentId == null) {
             log.warn("Creation returned null, checking for existing fulfillment ID for order {}", orderId);
-            fulfillmentId = shopifyService.getFulfillmentId(accountCode, numericOrderId);
+            fulfillmentId = shopifyService.getFulfillmentId(brandName, numericOrderId);
         }
 
         if (fulfillmentId == null) {
-            log.warn("Failed to create/find fulfillment for order {} (account: {})", orderId, accountCode);
+            log.warn("Failed to create/find fulfillment for order {} (account: {})", orderId, brandName);
             return false;
         }
 
         // Use the ID directly for tracking update
-        if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
+        if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId, order.getAwb(),
                 "out_for_delivery")) {
             log.error("Failed to update fulfillment tracking for order {}, stopping flow", orderId);
             return false;
         }
 
-        return proceedWithTagAndBotspace(accountCode, orderId, numericOrderId, order, fulfillmentOrdersData);
+        return proceedWithTagAndBotspace(brandName, orderId, numericOrderId, order, fulfillmentOrdersData);
     }
 
-    private boolean processOutForDeliveryWhenFulfilled(String accountCode, String orderId,
+    private boolean processOutForDeliveryWhenFulfilled(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, OUT_FOR_DELIVERY_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, OUT_FOR_DELIVERY_STATUSES)) {
             log.info("Order {} already has out for delivery status in database, skipping out for delivery flow", orderId);
             return true;
         }
@@ -185,7 +185,7 @@ public class OutForDeliveryFlowService {
             }
         }
         if (fulfillmentId != null) {
-            if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
+            if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId, order.getAwb(),
                     "out_for_delivery")) {
                 log.error("Failed to update fulfillment tracking (fulfilled path) for order {}, stopping flow",
                         orderId);
@@ -193,22 +193,22 @@ public class OutForDeliveryFlowService {
             }
         }
 
-        return sendOutForDeliveryBotspaceMessage(accountCode, order);
+        return sendOutForDeliveryBotspaceMessage(brandName, order);
     }
 
-    private boolean proceedWithTagAndBotspace(String accountCode, String orderId, Long numericOrderId,
+    private boolean proceedWithTagAndBotspace(String brandName, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, OUT_FOR_DELIVERY_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, OUT_FOR_DELIVERY_STATUSES)) {
             log.info("Order {} already has out for delivery status in database, skipping out for delivery notification", orderId);
             return true;
         }
-        return sendOutForDeliveryBotspaceMessage(accountCode, order);
+        return sendOutForDeliveryBotspaceMessage(brandName, order);
     }
 
-    private boolean sendOutForDeliveryBotspaceMessage(String accountCode, StatusUpdateWebhook.OrderStatus order) {
-        String templateId = getTemplateIdForAccount(accountCode);
+    private boolean sendOutForDeliveryBotspaceMessage(String brandName, StatusUpdateWebhook.OrderStatus order) {
+        String templateId = getTemplateIdForBrand(brandName);
         if (templateId == null || templateId.isEmpty()) {
-            log.warn("Template ID not configured for account code: {} (order: {})", accountCode, order.getOrderId());
+            log.warn("Template ID not configured for brand: {} (order: {})", brandName, order.getOrderId());
             return false;
         }
 
@@ -227,7 +227,7 @@ public class OutForDeliveryFlowService {
             request.setCards(cards);
         }
 
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, order.getOrderId(),
+        boolean sent = botspaceService.sendTemplateMessage(brandName, request, order.getOrderId(),
                 "sent_outForDelivery", "failed_outForDelivery");
         if (sent) {
             log.info("✅ Out for delivery notification sent successfully for order: {} to phone: {}", order.getOrderId(),
@@ -271,12 +271,12 @@ public class OutForDeliveryFlowService {
     }
 
     /**
-     * Build tracking URL from AWB using account-specific template
+     * Build tracking URL from AWB using brand-specific Shopify template
      */
     private String buildTrackingUrl(StatusUpdateWebhook.OrderStatus order) {
         if (order.getAwb() != null && !order.getAwb().isEmpty()) {
-            String accountCode = order.getAccountCode();
-            com.shipway.ordertracking.config.ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+            String brandName = order.resolveBrandName();
+            com.shipway.ordertracking.config.ShopifyAccount account = shopifyProperties.getAccountByCode(brandName);
 
             if (account != null && account.getTrackingUrlTemplate() != null
                     && !account.getTrackingUrlTemplate().isEmpty()) {
@@ -291,17 +291,16 @@ public class OutForDeliveryFlowService {
     }
 
     /**
-     * Get template ID for out for delivery status based on account code
+     * Botspace template ID for out-for-delivery, keyed by resolved brand (e.g. STRI).
      */
-    private String getTemplateIdForAccount(String accountCode) {
-        // Get Botspace account config
-        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(accountCode);
+    private String getTemplateIdForBrand(String brandName) {
+        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(brandName);
 
         if (botspaceAccount != null && botspaceAccount.getOutForDeliveryTemplateId() != null) {
             return botspaceAccount.getOutForDeliveryTemplateId();
         }
 
-        log.warn("Out for delivery template ID not found for account code: {}", accountCode);
+        log.warn("Out for delivery template ID not found for brand: {}", brandName);
         return null;
     }
 }

@@ -163,6 +163,9 @@ public class StatusUpdateWebhook {
         
         @JsonProperty("account_code")
         private String accountCode;
+
+        @JsonProperty("brand_name")
+        private String brandName;
         
         @JsonProperty("carrier_id")
         private String carrierId;
@@ -208,6 +211,33 @@ public class StatusUpdateWebhook {
 
         public void setAccountCode(String accountCode) {
             this.accountCode = accountCode;
+        }
+
+        public String getBrandName() {
+            return brandName;
+        }
+
+        public void setBrandName(String brandName) {
+            this.brandName = brandName;
+        }
+
+        /**
+         * Resolved brand key for Shopify/Botspace ({@code shopify.accounts} / {@code botspace.accounts})
+         * and for {@code customer_message_tracking.account_code}. Trims {@code brand_name}, applies
+         * display-name aliases, or returns {@code null} if missing/blank.
+         */
+        public String resolveBrandName() {
+            String raw = this.brandName;
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            if ("Striker Store".equals(raw)) {
+                return "STRI";
+            }
+            if ("Dribble Store".equals(raw)) {
+                return "DRIB";
+            }
+            return raw.trim();
         }
 
         public String getCarrierId() {

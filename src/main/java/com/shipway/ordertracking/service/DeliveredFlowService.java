@@ -71,16 +71,16 @@ public class DeliveredFlowService {
             return false;
         }
 
-        String accountCode = order.getAccountCode();
-        if (accountCode == null || accountCode.isEmpty()) {
-            log.warn("Account code is missing for order: {}", order.getOrderId());
+        String brandName = order.resolveBrandName();
+        if (brandName == null || brandName.isEmpty()) {
+            log.warn("Brand name is missing for order: {}", order.getOrderId());
             return false;
         }
 
         String orderId = order.getOrderId();
 
         // CHECK 2: Database check - skip if already processed (sent or failed)
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, DELIVERED_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, DELIVERED_STATUSES)) {
             log.info("Order {} already has delivered status in database, skipping delivered flow", orderId);
             return true;
         }
@@ -90,13 +90,13 @@ public class DeliveredFlowService {
             log.info(
                     "Order {} detected as clone (contains '_'), skipping Shopify lookup and fulfillment. Sending Botspace.",
                     orderId);
-            return sendDeliveredBotspaceMessage(accountCode, orderId, order);
+            return sendDeliveredBotspaceMessage(brandName, orderId, order);
         }
 
         // 1) GraphQL: get order with displayFulfillmentStatus
-        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(accountCode, orderId);
+        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(brandName, orderId);
         if (orderNode == null) {
-            log.warn("Order {} not found via GraphQL (account: {})", orderId, accountCode);
+            log.warn("Order {} not found via GraphQL (brand: {})", orderId, brandName);
             return false;
         }
 
@@ -105,7 +105,7 @@ public class DeliveredFlowService {
                 : null;
 
         if ("FULFILLED".equalsIgnoreCase(displayStatus)) {
-            return processDeliveredWhenFulfilled(accountCode, orderId, order, orderNode);
+            return processDeliveredWhenFulfilled(brandName, orderId, order, orderNode);
         }
 
         // UNFULFILLED or null: get fulfillment orders, find OPEN, create fulfillment if
@@ -116,17 +116,17 @@ public class DeliveredFlowService {
             return false;
         }
 
-        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(accountCode,
+        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(brandName,
                 orderGid);
         if (fulfillmentOrdersData == null) {
-            log.warn("Could not get fulfillment orders for order {} (account: {})", orderId, accountCode);
+            log.warn("Could not get fulfillment orders for order {} (brand: {})", orderId, brandName);
             return false;
         }
 
         String openFulfillmentOrderId = shopifyService.getOpenFulfillmentOrderIdFromEdges(fulfillmentOrdersData);
         if (openFulfillmentOrderId == null || openFulfillmentOrderId.isEmpty()) {
-            log.warn("No OPEN fulfillment order for order {} (account: {}), skipping delivered flow", orderId,
-                    accountCode);
+            log.warn("No OPEN fulfillment order for order {} (brand: {}), skipping delivered flow", orderId,
+                    brandName);
             return false;
         }
 
@@ -138,33 +138,33 @@ public class DeliveredFlowService {
         }
 
         String trackingUrl = buildTrackingUrl(order);
-        Long fulfillmentId = shopifyService.createFulfillment(accountCode, numericOrderId, openFulfillmentOrderId,
+        Long fulfillmentId = shopifyService.createFulfillment(brandName, numericOrderId, openFulfillmentOrderId,
                 order.getAwb(), trackingUrl);
 
         if (fulfillmentId == null) {
             log.warn("Creation returned null, checking for existing fulfillment ID for order {}", orderId);
-            fulfillmentId = shopifyService.getFulfillmentId(accountCode, numericOrderId);
+            fulfillmentId = shopifyService.getFulfillmentId(brandName, numericOrderId);
         }
 
         if (fulfillmentId == null) {
-            log.warn("Failed to create/find fulfillment for order {} (account: {})", orderId, accountCode);
+            log.warn("Failed to create/find fulfillment for order {} (brand: {})", orderId, brandName);
             return false;
         }
 
         // Optimization: For newly created fulfillment, tracking should be correct.
         // Update tracking to delivered
-        if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
+        if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId, order.getAwb(),
                 "delivered")) {
             log.error("Failed to update fulfillment tracking to delivered for order {}, stopping flow", orderId);
             return false;
         }
 
-        return proceedWithTagAndBotspace(accountCode, orderId, numericOrderId, order, fulfillmentOrdersData);
+        return proceedWithTagAndBotspace(brandName, orderId, numericOrderId, order, fulfillmentOrdersData);
     }
 
-    private boolean processDeliveredWhenFulfilled(String accountCode, String orderId,
+    private boolean processDeliveredWhenFulfilled(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, DELIVERED_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, DELIVERED_STATUSES)) {
             log.info("Order {} already has delivered status in database, skipping delivered flow", orderId);
             return true;
         }
@@ -222,7 +222,7 @@ public class DeliveredFlowService {
                 trackingNumberToUpdate = null; // Skip REST update
             }
 
-            if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId,
+            if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId,
                     trackingNumberToUpdate, "delivered")) {
                 log.error("Failed to update fulfillment tracking (fulfilled path) for order {}, stopping flow",
                         orderId);
@@ -233,41 +233,41 @@ public class DeliveredFlowService {
             return false;
         }
 
-        return sendDeliveredBotspaceMessage(accountCode, orderId, order);
+        return sendDeliveredBotspaceMessage(brandName, orderId, order);
     }
 
-    private boolean proceedWithTagAndBotspace(String accountCode, String orderId, Long numericOrderId,
+    private boolean proceedWithTagAndBotspace(String brandName, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, DELIVERED_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, DELIVERED_STATUSES)) {
             log.info("Order {} already has delivered status in database, skipping delivered notification", orderId);
             return true;
         }
-        return sendDeliveredBotspaceMessage(accountCode, orderId, order);
+        return sendDeliveredBotspaceMessage(brandName, orderId, order);
     }
 
-    private boolean sendDeliveredBotspaceMessage(String accountCode, String orderId,
+    private boolean sendDeliveredBotspaceMessage(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order) {
         // Get template ID
-        String templateId = getTemplateIdForAccount(accountCode);
+        String templateId = getTemplateIdForBrand(brandName);
         if (templateId == null || templateId.isEmpty()) {
-            log.warn("Template ID not configured for account code: {} (order: {})", accountCode, order.getOrderId());
+            log.warn("Template ID not configured for brand: {} (order: {})", brandName, order.getOrderId());
             return false;
         }
 
-        ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+        ShopifyAccount account = shopifyProperties.getAccountByCode(brandName);
         String productUrlPrefix = account != null ? account.getProductUrl() : null;
         if (productUrlPrefix == null) {
-            log.warn("Product URL prefix not configured for account code: {}", accountCode);
+            log.warn("Product URL prefix not configured for brand: {}", brandName);
             productUrlPrefix = "https://www.thestrikerstore.com/products/"; // Default fallback, though should be
                                                                             // configured
 
         }
 
         // Call Shopify API to get product details (handle and image)
-        List<ShopifyService.ProductDetails> productDetails = shopifyService.getOrderProductDetails(accountCode,
+        List<ShopifyService.ProductDetails> productDetails = shopifyService.getOrderProductDetails(brandName,
                 orderId);
-        log.info("Retrieved {} product details for order {} (account: {})", productDetails.size(), orderId,
-                accountCode);
+        log.info("Retrieved {} product details for order {} (brand: {})", productDetails.size(), orderId,
+                brandName);
 
         String formattedPhone = PhoneNumberUtil.formatPhoneNumber(order.getShippingPhone());
 
@@ -312,7 +312,7 @@ public class DeliveredFlowService {
             }
         }
 
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, orderId, "sent_delivered",
+        boolean sent = botspaceService.sendTemplateMessage(brandName, request, orderId, "sent_delivered",
                 "failed_delivered");
         if (sent) {
             log.info("✅ Delivered notification sent successfully for order: {} to phone: {}", orderId, formattedPhone);
@@ -331,9 +331,8 @@ public class DeliveredFlowService {
         return variables;
     }
 
-    private String getTemplateIdForAccount(String accountCode) {
-        // Get Botspace account config
-        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(accountCode);
+    private String getTemplateIdForBrand(String brandName) {
+        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(brandName);
         if (botspaceAccount != null && botspaceAccount.getDeliveredTemplateId() != null) {
             return botspaceAccount.getDeliveredTemplateId();
         }
@@ -341,12 +340,12 @@ public class DeliveredFlowService {
     }
 
     /**
-     * Build tracking URL from AWB using account-specific template
+     * Build tracking URL from AWB using brand-specific Shopify template
      */
     private String buildTrackingUrl(StatusUpdateWebhook.OrderStatus order) {
         if (order.getAwb() != null && !order.getAwb().isEmpty()) {
-            String accountCode = order.getAccountCode();
-            com.shipway.ordertracking.config.ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+            String brandName = order.resolveBrandName();
+            com.shipway.ordertracking.config.ShopifyAccount account = shopifyProperties.getAccountByCode(brandName);
 
             if (account != null && account.getTrackingUrlTemplate() != null
                     && !account.getTrackingUrlTemplate().isEmpty()) {

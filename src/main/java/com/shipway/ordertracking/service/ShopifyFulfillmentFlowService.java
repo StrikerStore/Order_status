@@ -31,10 +31,10 @@ public class ShopifyFulfillmentFlowService {
     public boolean processShopifyFulfillment(StatusUpdateWebhook.OrderStatus order) {
         log.info("Processing shopify fulfillment flow for order: {}", order.getOrderId());
 
-        // Validate required fields
-        String accountCode = order.getAccountCode();
-        if (accountCode == null || accountCode.isEmpty()) {
-            log.warn("Account code is missing for order: {}", order.getOrderId());
+        // Validate required fields (brand_name keys shopify.accounts / botspace.accounts)
+        String brandName = order.resolveBrandName();
+        if (brandName == null || brandName.isEmpty()) {
+            log.warn("Brand name is missing for order: {}", order.getOrderId());
             return false;
         }
 
@@ -50,9 +50,9 @@ public class ShopifyFulfillmentFlowService {
         }
 
         // 1) GraphQL: get order with displayFulfillmentStatus and name
-        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(accountCode, orderId);
+        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(brandName, orderId);
         if (orderNode == null) {
-            log.warn("Order {} not found via GraphQL (account: {})", orderId, accountCode);
+            log.warn("Order {} not found via GraphQL (brand: {})", orderId, brandName);
             return false;
         }
 
@@ -61,7 +61,7 @@ public class ShopifyFulfillmentFlowService {
                 : null;
 
         if ("FULFILLED".equalsIgnoreCase(displayStatus)) {
-            return processFulfillmentWhenFulfilled(accountCode, orderId, order, orderNode);
+            return processFulfillmentWhenFulfilled(brandName, orderId, order, orderNode);
         }
 
         // UNFULFILLED or null: get fulfillment orders, find OPEN, create fulfillment if
@@ -72,16 +72,16 @@ public class ShopifyFulfillmentFlowService {
             return false;
         }
 
-        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(accountCode, orderGid);
+        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(brandName, orderGid);
         if (fulfillmentOrdersData == null) {
-            log.warn("Could not get fulfillment orders for order {} (account: {})", orderId, accountCode);
+            log.warn("Could not get fulfillment orders for order {} (brand: {})", orderId, brandName);
             return false;
         }
 
         String openFulfillmentOrderId = shopifyService.getOpenFulfillmentOrderIdFromEdges(fulfillmentOrdersData);
         if (openFulfillmentOrderId == null || openFulfillmentOrderId.isEmpty()) {
-            log.warn("No OPEN fulfillment order for order {} (account: {}), skipping fulfillment flow", orderId,
-                    accountCode);
+            log.warn("No OPEN fulfillment order for order {} (brand: {}), skipping fulfillment flow", orderId,
+                    brandName);
             return false;
         }
 
@@ -93,21 +93,21 @@ public class ShopifyFulfillmentFlowService {
         }
 
         String trackingUrl = buildTrackingUrl(order);
-        Long fulfillmentId = shopifyService.createFulfillment(accountCode, numericOrderId, openFulfillmentOrderId,
+        Long fulfillmentId = shopifyService.createFulfillment(brandName, numericOrderId, openFulfillmentOrderId,
                 order.getAwb(), trackingUrl);
 
         if (fulfillmentId == null) {
             log.warn("Creation returned null, checking for existing fulfillment ID for order {}", orderId);
-            fulfillmentId = shopifyService.getFulfillmentId(accountCode, numericOrderId);
+            fulfillmentId = shopifyService.getFulfillmentId(brandName, numericOrderId);
         }
 
         if (fulfillmentId == null) {
-            log.warn("Failed to create/find fulfillment for order {} (account: {})", orderId, accountCode);
+            log.warn("Failed to create/find fulfillment for order {} (brand: {})", orderId, brandName);
             return false;
         }
 
         // Use the ID directly for tracking update
-        if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
+        if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId, order.getAwb(),
                 "LABEL PRINTED")) {
             log.error("Failed to update fulfillment tracking for order {}, stopping flow", orderId);
             return false;
@@ -117,7 +117,7 @@ public class ShopifyFulfillmentFlowService {
         return true;
     }
 
-    private boolean processFulfillmentWhenFulfilled(String accountCode, String orderId,
+    private boolean processFulfillmentWhenFulfilled(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
         Long numericOrderId = com.shipway.ordertracking.service.ShopifyService.parseNumericIdFromGid(
                 orderNode.get("id") != null ? orderNode.get("id").toString() : null, "gid://shopify/Order/");
@@ -139,7 +139,7 @@ public class ShopifyFulfillmentFlowService {
             }
         }
         if (fulfillmentId != null) {
-            if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, order.getAwb(),
+            if (!shopifyService.updateFulfillmentTracking(brandName, numericOrderId, fulfillmentId, order.getAwb(),
                     "LABEL PRINTED")) {
                 log.error("Failed to update fulfillment tracking (fulfilled path) for order {}, stopping flow",
                         orderId);
@@ -152,12 +152,12 @@ public class ShopifyFulfillmentFlowService {
     }
 
     /**
-     * Build tracking URL from AWB using account-specific template
+     * Build tracking URL from AWB using brand-specific Shopify template
      */
     private String buildTrackingUrl(StatusUpdateWebhook.OrderStatus order) {
         if (order.getAwb() != null && !order.getAwb().isEmpty()) {
-            String accountCode = order.getAccountCode();
-            ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+            String brandName = order.resolveBrandName();
+            ShopifyAccount account = brandName != null ? shopifyProperties.getAccountByCode(brandName) : null;
 
             if (account != null && account.getTrackingUrlTemplate() != null
                     && !account.getTrackingUrlTemplate().isEmpty()) {

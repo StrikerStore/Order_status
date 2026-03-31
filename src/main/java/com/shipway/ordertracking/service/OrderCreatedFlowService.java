@@ -45,10 +45,10 @@ public class OrderCreatedFlowService {
     public boolean processShopifyOrderCreated(ShopifyOrderCreatedWebhook webhook, String shopDomain) {
         log.info("Processing Shopify order created flow for order: {}", webhook.getName());
 
-        // Extract account code from shop domain
-        String accountCode = extractAccountCodeFromShopDomain(shopDomain);
-        if (accountCode == null || accountCode.isEmpty()) {
-            log.warn("Cannot determine account code from shop domain: {}", shopDomain);
+        // Resolve brand key (STRI / DRIB / …) from shop domain to match shopify.accounts / botspace.accounts
+        String brandName = extractBrandNameFromShopDomain(shopDomain);
+        if (brandName == null || brandName.isEmpty()) {
+            log.warn("Cannot determine brand name from shop domain: {}", shopDomain);
             return false;
         }
 
@@ -72,10 +72,10 @@ public class OrderCreatedFlowService {
             log.info("Using order-created test phone override for order: {}", orderName);
         }
 
-        // Get template ID for this account
-        String templateId = getTemplateIdForAccount(accountCode);
+        // Get template ID for this brand
+        String templateId = getTemplateIdForBrand(brandName);
         if (templateId == null || templateId.isEmpty()) {
-            log.warn("Template ID not configured for account code: {} (order: {})", accountCode, orderName);
+            log.warn("Template ID not configured for brand: {} (order: {})", brandName, orderName);
             return false;
         }
 
@@ -92,7 +92,7 @@ public class OrderCreatedFlowService {
         request.setVariables(variables);
 
         // Send template message via Botspace (order_id in table = order name)
-        boolean sent = botspaceService.sendTemplateMessage(accountCode, request, orderName,
+        boolean sent = botspaceService.sendTemplateMessage(brandName, request, orderName,
                 "sent_orderCreated",
                 "failed_orderCreated");
 
@@ -108,11 +108,9 @@ public class OrderCreatedFlowService {
     }
 
     /**
-     * Extract account code from Shopify shop domain
-     * Example: shop-stri.myshopify.com -> STRI
-     * You can customize this logic based on your shop naming convention
+     * Resolve configured brand key from Shopify shop domain (e.g. seq5t1-mz.myshopify.com → STRI).
      */
-    private String extractAccountCodeFromShopDomain(String shopDomain) {
+    private String extractBrandNameFromShopDomain(String shopDomain) {
         if (shopDomain == null || shopDomain.isEmpty()) {
             return null;
         }
@@ -120,20 +118,18 @@ public class OrderCreatedFlowService {
         // Remove .myshopify.com if present
         String shopName = shopDomain.replace(".myshopify.com", "").replace("https://", "").replace("http://", "");
 
-        // Try to find matching account in configuration
-        // Check if any configured account's shop matches
-        for (String accountCode : shopifyProperties.getAccounts().keySet()) {
-            ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+        // Match shop domain against configured Shopify accounts
+        for (String key : shopifyProperties.getAccounts().keySet()) {
+            ShopifyAccount account = shopifyProperties.getAccountByCode(key);
             if (account != null && account.getShop() != null) {
                 String configuredShop = account.getShop().replace(".myshopify.com", "");
                 if (configuredShop.equalsIgnoreCase(shopName)) {
-                    return accountCode;
+                    return key;
                 }
             }
         }
 
         // If no match found, try to extract from shop name (e.g., shop-stri -> STRI)
-        // Customize this based on your naming convention
         if (shopName.contains("-")) {
             String[] parts = shopName.split("-");
             if (parts.length > 1) {
@@ -141,7 +137,7 @@ public class OrderCreatedFlowService {
             }
         }
 
-        // Default: use shop name as account code (uppercase)
+        // Default: use shop name as brand key (uppercase)
         return shopName.toUpperCase();
     }
 
@@ -193,23 +189,17 @@ public class OrderCreatedFlowService {
         String orderName = webhook.getName() != null ? webhook.getName() : "";
         variables.add(orderName);
 
-        // Add more variables as needed based on your template
-
         return variables;
     }
 
-    /**
-     * Get template ID for order created status based on account code
-     */
-    private String getTemplateIdForAccount(String accountCode) {
-        // Get Botspace account config
-        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(accountCode);
+    private String getTemplateIdForBrand(String brandName) {
+        BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(brandName);
 
         if (botspaceAccount != null && botspaceAccount.getOrderCreatedTemplateId() != null) {
             return botspaceAccount.getOrderCreatedTemplateId();
         }
 
-        log.warn("Order created template ID not found for account code: {}", accountCode);
+        log.warn("Order created template ID not found for brand: {}", brandName);
         return null;
     }
 
