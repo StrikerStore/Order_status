@@ -104,16 +104,17 @@ public class FulfillmentUiController {
     @PostMapping("/apply")
     public String apply(
             @RequestParam String accountCode,
+            @RequestParam(required = false) String shopifyBrandName,
             @RequestParam String orderId,
             @RequestParam String orderTrackingStatus,
             @RequestParam(required = false) String lastAccountCode,
             @RequestParam(required = false, defaultValue = "200") int lastLimit,
             Model model) {
 
-        log.info("UI Apply to Shopify: accountCode={} orderId={} orderTrackingStatus={}", accountCode, orderId,
-                orderTrackingStatus);
+        log.info("UI Apply to Shopify: trackingAccount={} shopifyBrand={} orderId={} orderTrackingStatus={}", accountCode,
+                shopifyBrandName, orderId, orderTrackingStatus);
         FulfillAttemptResult result = orderTrackingBulkFulfillmentService.fulfillSingleOrder(accountCode, orderId,
-                orderTrackingStatus);
+                orderTrackingStatus, shopifyBrandName);
         log.info("UI Apply to Shopify finished: orderId={} success={} message={}", orderId, result.isSuccess(),
                 result.getMessage());
         model.addAttribute("applyResult", result);

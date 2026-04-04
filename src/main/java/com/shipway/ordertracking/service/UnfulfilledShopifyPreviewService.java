@@ -4,7 +4,9 @@ import com.shipway.ordertracking.config.ShopifyProperties;
 import com.shipway.ordertracking.dto.UnfulfilledShopifyOrderItem;
 import com.shipway.ordertracking.dto.UnfulfilledShopifyPreviewResponse;
 import com.shipway.ordertracking.entity.OrderTracking;
+import com.shipway.ordertracking.entity.StoreShopifyConnection;
 import com.shipway.ordertracking.repository.OrderTrackingRepository;
+import com.shipway.ordertracking.repository.StoreShopifyConnectionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,6 +121,9 @@ public class UnfulfilledShopifyPreviewService {
     @Autowired
     private ShopifyProperties shopifyProperties;
 
+    @Autowired
+    private StoreShopifyConnectionRepository storeShopifyConnectionRepository;
+
     @Value("${shopify.preview.bulk-orders-query}")
     private String bulkOrdersQuery;
 
@@ -126,10 +131,11 @@ public class UnfulfilledShopifyPreviewService {
     private int bulkOrdersMaxDefault;
 
     /**
-     * @param accountCode      optional STRI / DRIB / … (otherwise every configured Shopify account)
+     * @param filter           optional {@code store_shopify_connections.brand_name} or {@code account_code};
+     *                         when the mapping table is empty, treated as legacy {@code shopify.accounts} key
      * @param shopifyBulkCapPerAccount max unfulfilled orders to load from Shopify per account (request limit)
      */
-    public UnfulfilledShopifyPreviewResponse buildPreview(String accountCode, int shopifyBulkCapPerAccount) {
+    public UnfulfilledShopifyPreviewResponse buildPreview(String filter, int shopifyBulkCapPerAccount) {
         UnfulfilledShopifyPreviewResponse response = new UnfulfilledShopifyPreviewResponse();
         Map<String, Integer> counts = new HashMap<>();
         counts.put("shopifyUnfulfilledInBulk", 0);
@@ -142,26 +148,28 @@ public class UnfulfilledShopifyPreviewService {
         int cap = Math.min(Math.max(shopifyBulkCapPerAccount, 1), 10_000);
         int bulkMax = Math.min(cap, Math.max(1, bulkOrdersMaxDefault));
 
-        List<String> accounts = resolveAccounts(accountCode);
-        if (accounts.isEmpty()) {
-            log.warn("No Shopify accounts to process (accountCode filter: {})", accountCode);
+        List<ShopifyTrackingPair> pairs = resolveShopifyTrackingPairs(filter);
+        if (pairs.isEmpty()) {
+            log.warn("No Shopify / mapping rows to process (filter: {})", filter);
             response.setCounts(counts);
             return response;
         }
 
-        for (String acct : accounts) {
-            if (shopifyProperties.getAccountByCode(acct) == null) {
-                log.debug("Skipping unknown account code: {}", acct);
+        for (ShopifyTrackingPair pair : pairs) {
+            String shopifyKey = pair.shopifyBrandName();
+            String trackingAcct = pair.trackingAccountCode();
+            if (shopifyProperties.getAccountByCode(shopifyKey) == null) {
+                log.debug("Skipping unknown Shopify account key (brand_name): {}", shopifyKey);
                 continue;
             }
             increment(counts, "accountsProcessed");
 
-            Map<String, Map<String, Object>> shopifyByKey = shopifyService.loadOrderNodesBySearchQueryPaged(acct,
+            Map<String, Map<String, Object>> shopifyByKey = shopifyService.loadOrderNodesBySearchQueryPaged(shopifyKey,
                     bulkOrdersQuery, bulkMax);
             counts.put("shopifyUnfulfilledInBulk",
                     counts.getOrDefault("shopifyUnfulfilledInBulk", 0) + shopifyByKey.size());
 
-            logGraphqlUnfulfilledIds(acct, shopifyByKey);
+            logGraphqlUnfulfilledIds(shopifyKey, shopifyByKey);
 
             List<String> keysForDb = new ArrayList<>();
             for (String normKey : shopifyByKey.keySet()) {
@@ -172,9 +180,9 @@ public class UnfulfilledShopifyPreviewService {
                 keysForDb.add(normKey);
             }
 
-            Map<String, OrderTracking> trackingByKey = loadLatestTrackingForKeys(acct, keysForDb);
+            Map<String, OrderTracking> trackingByKey = loadLatestTrackingForKeys(trackingAcct, keysForDb);
 
-            logOrderTrackingHitsRaw(acct, trackingByKey);
+            logOrderTrackingHitsRaw(trackingAcct, trackingByKey);
 
             int acctMatched = 0;
             int acctNoRow = 0;
@@ -205,7 +213,8 @@ public class UnfulfilledShopifyPreviewService {
                         : null;
 
                 UnfulfilledShopifyOrderItem item = new UnfulfilledShopifyOrderItem();
-                item.setAccountCode(acct.toUpperCase());
+                item.setAccountCode(trackingAcct.toUpperCase());
+                item.setShopifyBrandName(shopifyKey.toUpperCase());
                 item.setOrderId(tr.getOrderId());
                 item.setOrderTrackingStatus(tr.getShipmentStatus());
                 item.setShopifyDisplayFulfillmentStatus(display);
@@ -233,8 +242,9 @@ public class UnfulfilledShopifyPreviewService {
             }
 
             log.info(
-                    "Preview account={}: shipment_status allowlist ({} values) applied — matchedItems={}, skippedNoTrackingRow={}, skippedStatusMismatch={}",
-                    acct.toUpperCase(), ALLOWED_SHIPMENT_STATUSES.size(), acctMatched, acctNoRow, acctMismatch);
+                    "Preview shopifyKey={} trackingAccount={}: shipment_status allowlist ({} values) applied — matchedItems={}, skippedNoTrackingRow={}, skippedStatusMismatch={}",
+                    shopifyKey.toUpperCase(), trackingAcct.toUpperCase(), ALLOWED_SHIPMENT_STATUSES.size(), acctMatched,
+                    acctNoRow, acctMismatch);
         }
 
         List<String> orderIds = new ArrayList<>();
@@ -288,7 +298,45 @@ public class UnfulfilledShopifyPreviewService {
                 accountCode.toUpperCase(), trackingByKey.size(), keyToStatus);
     }
 
-    private List<String> resolveAccounts(String accountCode) {
+    private record ShopifyTrackingPair(String shopifyBrandName, String trackingAccountCode) {
+    }
+
+    /**
+     * When {@code store_shopify_connections} has rows: Shopify uses {@code brand_name}, {@code order_tracking} /
+     * {@code labels} use {@code account_code}. When the table is empty, both sides use the same legacy
+     * {@code shopify.accounts} key.
+     */
+    private List<ShopifyTrackingPair> resolveShopifyTrackingPairs(String filter) {
+        if (storeShopifyConnectionRepository.count() == 0) {
+            List<ShopifyTrackingPair> out = new ArrayList<>();
+            for (String k : resolveLegacyShopifyKeys(filter)) {
+                out.add(new ShopifyTrackingPair(k, k));
+            }
+            return out;
+        }
+
+        List<StoreShopifyConnection> all = storeShopifyConnectionRepository.findAllByOrderByBrandNameAsc();
+        if (filter == null || filter.isBlank()) {
+            return all.stream()
+                    .map(c -> new ShopifyTrackingPair(c.getBrandName().trim(), c.getAccountCode().trim()))
+                    .toList();
+        }
+        String f = filter.trim();
+        for (StoreShopifyConnection c : all) {
+            if (c.getBrandName() != null && c.getBrandName().trim().equalsIgnoreCase(f)) {
+                return List.of(new ShopifyTrackingPair(c.getBrandName().trim(), c.getAccountCode().trim()));
+            }
+        }
+        for (StoreShopifyConnection c : all) {
+            if (c.getAccountCode() != null && c.getAccountCode().trim().equalsIgnoreCase(f)) {
+                return List.of(new ShopifyTrackingPair(c.getBrandName().trim(), c.getAccountCode().trim()));
+            }
+        }
+        log.warn("store_shopify_connections has {} row(s) but none matched filter '{}'", all.size(), filter);
+        return List.of();
+    }
+
+    private List<String> resolveLegacyShopifyKeys(String accountCode) {
         List<String> out = new ArrayList<>();
         if (accountCode != null && !accountCode.isBlank()) {
             out.add(accountCode.trim().toUpperCase());

@@ -5,6 +5,7 @@ import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.config.ShopifyAccount;
 import com.shipway.ordertracking.config.ShopifyProperties;
 import com.shipway.ordertracking.dto.StatusUpdateWebhook;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -48,7 +49,7 @@ class InTransitFlowServiceTest {
     private StatusUpdateWebhook.OrderStatus baseOrder() {
         StatusUpdateWebhook.OrderStatus o = new StatusUpdateWebhook.OrderStatus();
         o.setOrderId("254120");
-        o.setBrandName("STRI");
+        o.setBrandName(BrandAccountKey.STRIKER_STORE);
         o.setShippingPhone("+919876543210");
         o.setCurrentShipmentStatus("IN_TRANSIT");
         o.setPreviousStatus("PICKED_UP");
@@ -79,7 +80,7 @@ class InTransitFlowServiceTest {
 
     @Test
     void processInTransit_alreadySentInDb_returnsTrue() {
-        when(customerMessageTrackingService.hasAnyStatus(eq("254120"), eq("STRI"), anyList())).thenReturn(true);
+        when(customerMessageTrackingService.hasAnyStatus(eq("254120"), eq(BrandAccountKey.STRIKER_STORE), anyList())).thenReturn(true);
         assertTrue(service.processInTransit(baseOrder()));
     }
 
@@ -92,15 +93,15 @@ class InTransitFlowServiceTest {
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setInTransitTemplateId("tpl_in");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
         ShopifyAccount sa = new ShopifyAccount();
         sa.setTrackingUrlTemplate("https://t/{awb}");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
         o.setAwb("AWB1");
 
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(), eq("254120_CLONE"), eq("sent_inTransit"),
-                eq("failed_inTransit"))).thenReturn(true);
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(), eq("254120_CLONE"), eq("sent_inTransit"),
+                eq("failed_inTransit"), any(), any())).thenReturn(true);
 
         assertTrue(service.processInTransit(o));
     }
@@ -123,22 +124,22 @@ class InTransitFlowServiceTest {
         fl.add(Map.of("id", "gid://shopify/Fulfillment/555"));
         orderNode.put("fulfillments", fl);
 
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(254120L), eq(555L), any(), eq("in_transit")))
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(254120L), eq(555L), any(), eq("in_transit")))
                 .thenReturn(true);
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setInTransitTemplateId("tpl_in");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
         ShopifyAccount sa = new ShopifyAccount();
         sa.setTrackingUrlTemplate("https://t/{awb}");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
 
         StatusUpdateWebhook.OrderStatus o = baseOrder();
         o.setAwb("AWB1");
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(), eq("254120"), eq("sent_inTransit"),
-                eq("failed_inTransit"))).thenReturn(true);
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(), eq("254120"), eq("sent_inTransit"),
+                eq("failed_inTransit"), any(), any())).thenReturn(true);
 
         assertTrue(service.processInTransit(o));
     }
@@ -150,27 +151,27 @@ class InTransitFlowServiceTest {
         Map<String, Object> orderNode = new HashMap<>();
         orderNode.put("id", "gid://shopify/Order/254120");
         orderNode.put("displayFulfillmentStatus", "UNFULFILLED");
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
 
         Map<String, Object> foData = Map.of();
-        when(shopifyService.getFulfillmentOrdersForOrder("STRI", "gid://shopify/Order/254120")).thenReturn(foData);
+        when(shopifyService.getFulfillmentOrdersForOrder(BrandAccountKey.STRIKER_STORE, "gid://shopify/Order/254120")).thenReturn(foData);
         when(shopifyService.getOpenFulfillmentOrderIdFromEdges(foData)).thenReturn("gid://shopify/FulfillmentOrder/9");
-        when(shopifyService.createFulfillment(eq("STRI"), eq(254120L), eq("gid://shopify/FulfillmentOrder/9"), any(),
+        when(shopifyService.createFulfillment(eq(BrandAccountKey.STRIKER_STORE), eq(254120L), eq("gid://shopify/FulfillmentOrder/9"), any(),
                 any())).thenReturn(42L);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(254120L), eq(42L), any(), eq("in_transit")))
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(254120L), eq(42L), any(), eq("in_transit")))
                 .thenReturn(true);
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setInTransitTemplateId("tpl_in");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
         ShopifyAccount sa = new ShopifyAccount();
         sa.setTrackingUrlTemplate("https://t/{awb}");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
 
         StatusUpdateWebhook.OrderStatus o = baseOrder();
         o.setAwb("AWB1");
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(), eq("254120"), eq("sent_inTransit"),
-                eq("failed_inTransit"))).thenReturn(true);
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(), eq("254120"), eq("sent_inTransit"),
+                eq("failed_inTransit"), any(), any())).thenReturn(true);
 
         assertTrue(service.processInTransit(o));
     }

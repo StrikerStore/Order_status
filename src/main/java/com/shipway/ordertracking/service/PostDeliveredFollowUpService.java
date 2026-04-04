@@ -60,7 +60,8 @@ public class PostDeliveredFollowUpService {
         for (OrderPhoneProjection row : rows) {
             String orderId = row.getOrderId();
             String accountCode = row.getAccountCode();
-            if (customerMessageTrackingService.hasAnyStatus(orderId, accountCode, FOLLOW_UP_STATUSES)) {
+            String brandName = row.getBrandName() != null ? row.getBrandName().trim() : "";
+            if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, FOLLOW_UP_STATUSES)) {
                 log.debug("Post-delivered follow-up: order {} already has follow-up status, skipping", orderId);
                 skipped++;
                 continue;

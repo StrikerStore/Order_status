@@ -2,6 +2,7 @@ package com.shipway.ordertracking.service;
 
 import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.dto.FasterrAbandonedCartWebhook;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -71,7 +72,7 @@ class AbandonedCartFlowServiceTest {
         attrs.setItems(List.of(item));
         w.setAttributes(attrs);
 
-        when(shopifyService.getProductOnlineStoreUrl("STRI", 123L)).thenReturn("https://shop.example/p/1");
+        when(shopifyService.getProductOnlineStoreUrl(BrandAccountKey.STRIKER_STORE, 123L)).thenReturn("https://shop.example/p/1");
 
         assertTrue(service.processAbandonedCart(w));
     }
@@ -109,7 +110,7 @@ class AbandonedCartFlowServiceTest {
     }
 
     @Test
-    void processAbandonedCart_extractsDRIBFromHost() {
+    void processAbandonedCart_extractsDribbleStoreFromHost() {
         FasterrAbandonedCartWebhook w = new FasterrAbandonedCartWebhook();
         FasterrAbandonedCartWebhook.Attributes attrs = new FasterrAbandonedCartWebhook.Attributes();
         attrs.setCartId("cart-1");
@@ -122,7 +123,7 @@ class AbandonedCartFlowServiceTest {
         attrs.setItems(List.of(item));
         w.setAttributes(attrs);
 
-        when(shopifyService.getProductOnlineStoreUrl("DRIB", 1L)).thenReturn("https://recovery.example/p");
+        when(shopifyService.getProductOnlineStoreUrl(BrandAccountKey.DRIBBLE_STORE, 1L)).thenReturn("https://recovery.example/p");
 
         assertTrue(service.processAbandonedCart(w));
     }
@@ -139,7 +140,7 @@ class AbandonedCartFlowServiceTest {
         attrs.setItems(List.of(item));
         w.setAttributes(attrs);
 
-        when(shopifyService.getProductOnlineStoreUrl("STRI", 99L)).thenReturn("https://p.example/99");
+        when(shopifyService.getProductOnlineStoreUrl(BrandAccountKey.STRIKER_STORE, 99L)).thenReturn("https://p.example/99");
 
         assertTrue(service.processAbandonedCart(w));
     }
@@ -160,7 +161,7 @@ class AbandonedCartFlowServiceTest {
         attrs.setItems(List.of(item));
         w.setAttributes(attrs);
 
-        when(shopifyService.getProductOnlineStoreUrl("STRI", 1L)).thenReturn("https://shop.example/p/1");
+        when(shopifyService.getProductOnlineStoreUrl(BrandAccountKey.STRIKER_STORE, 1L)).thenReturn("https://shop.example/p/1");
 
         assertTrue(service.processAbandonedCart(w));
     }

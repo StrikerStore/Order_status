@@ -182,8 +182,8 @@
         <form th:action="@{/ui/fulfillment/load}" method="post">
             <div class="row">
                 <div>
-                    <label for="accountCode">Account code (optional)</label>
-                    <input id="accountCode" type="text" name="accountCode" th:value="${lastAccountCode}" placeholder="STRI, DRIB, …"/>
+                    <label for="accountCode">Brand name or tracking account (optional)</label>
+                    <input id="accountCode" type="text" name="accountCode" th:value="${lastAccountCode}" placeholder="STRIKER STORE or PLX001 — uses store_shopify_connections when populated"/>
                 </div>
                 <div>
                     <label for="limit">Limit per store</label>
@@ -214,7 +214,8 @@
             <tr>
                 <th class="col-num">#</th>
                 <th>Order ID</th>
-                <th>Account</th>
+                <th>Tracking account</th>
+                <th>Shopify brand</th>
                 <th>Tracking status</th>
                 <th>AWB (label)</th>
                 <th>Shopify name</th>
@@ -229,6 +230,7 @@
                 <td class="col-num" th:text="${row.count}">1</td>
                 <td th:text="${item.orderId}">—</td>
                 <td th:text="${item.accountCode}">—</td>
+                <td th:text="${item.shopifyBrandName != null ? item.shopifyBrandName : '—'}">—</td>
                 <td th:text="${item.orderTrackingStatus}">—</td>
                 <td th:text="${item.awb != null ? item.awb : '—'}">—</td>
                 <td th:text="${item.shopifyOrderName}">—</td>
@@ -238,6 +240,7 @@
                 <td>
                     <form th:action="@{/ui/fulfillment/apply}" method="post" style="margin:0;">
                         <input type="hidden" name="accountCode" th:value="${item.accountCode}"/>
+                        <input type="hidden" name="shopifyBrandName" th:value="${item.shopifyBrandName}"/>
                         <input type="hidden" name="orderId" th:value="${item.orderId}"/>
                         <input type="hidden" name="orderTrackingStatus" th:value="${item.orderTrackingStatus}"/>
                         <input type="hidden" name="lastAccountCode" th:value="${lastAccountCode}"/>

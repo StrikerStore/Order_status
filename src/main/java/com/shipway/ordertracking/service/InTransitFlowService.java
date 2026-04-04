@@ -78,7 +78,7 @@ public class InTransitFlowService {
         String orderId = order.getOrderId();
 
         // CHECK 2: Database check - skip if already processed (sent or failed)
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, IN_TRANSIT_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), IN_TRANSIT_STATUSES)) {
             log.info("Order {} already has in transit status in database, skipping in transit flow", orderId);
             return true;
         }
@@ -160,7 +160,7 @@ public class InTransitFlowService {
 
     private boolean processInTransitWhenFulfilled(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, IN_TRANSIT_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), IN_TRANSIT_STATUSES)) {
             log.info("Order {} already has in transit status in database, skipping in transit flow", orderId);
             return true;
         }
@@ -198,7 +198,7 @@ public class InTransitFlowService {
 
     private boolean proceedWithTagAndBotspace(String brandName, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, IN_TRANSIT_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), IN_TRANSIT_STATUSES)) {
             log.info("Order {} already has in transit status in database, skipping in transit notification", orderId);
             return true;
         }
@@ -228,7 +228,7 @@ public class InTransitFlowService {
         }
 
         boolean sent = botspaceService.sendTemplateMessage(brandName, request, order.getOrderId(), "sent_inTransit",
-                "failed_inTransit");
+                "failed_inTransit", order.trackingAccountCodeFromRequest(), order.trackingBrandNameFromRequest());
         if (sent) {
             log.info("✅ In transit notification sent successfully for order: {} to phone: {}", order.getOrderId(),
                     formattedPhone);
@@ -290,7 +290,7 @@ public class InTransitFlowService {
     }
 
     /**
-     * Botspace template ID for in-transit, keyed by resolved brand (e.g. STRI).
+     * Botspace template ID for in-transit, keyed by resolved brand (e.g. STRIKER STORE).
      */
     private String getTemplateIdForBrand(String brandName) {
         BotspaceAccount botspaceAccount = botspaceProperties

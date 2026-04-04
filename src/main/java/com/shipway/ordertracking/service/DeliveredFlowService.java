@@ -80,7 +80,7 @@ public class DeliveredFlowService {
         String orderId = order.getOrderId();
 
         // CHECK 2: Database check - skip if already processed (sent or failed)
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, DELIVERED_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), DELIVERED_STATUSES)) {
             log.info("Order {} already has delivered status in database, skipping delivered flow", orderId);
             return true;
         }
@@ -164,7 +164,7 @@ public class DeliveredFlowService {
 
     private boolean processDeliveredWhenFulfilled(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, DELIVERED_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), DELIVERED_STATUSES)) {
             log.info("Order {} already has delivered status in database, skipping delivered flow", orderId);
             return true;
         }
@@ -238,7 +238,7 @@ public class DeliveredFlowService {
 
     private boolean proceedWithTagAndBotspace(String brandName, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, DELIVERED_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), DELIVERED_STATUSES)) {
             log.info("Order {} already has delivered status in database, skipping delivered notification", orderId);
             return true;
         }
@@ -313,7 +313,7 @@ public class DeliveredFlowService {
         }
 
         boolean sent = botspaceService.sendTemplateMessage(brandName, request, orderId, "sent_delivered",
-                "failed_delivered");
+                "failed_delivered", order.trackingAccountCodeFromRequest(), order.trackingBrandNameFromRequest());
         if (sent) {
             log.info("✅ Delivered notification sent successfully for order: {} to phone: {}", orderId, formattedPhone);
         } else {
@@ -358,4 +358,5 @@ public class DeliveredFlowService {
         }
         return null;
     }
+
 }

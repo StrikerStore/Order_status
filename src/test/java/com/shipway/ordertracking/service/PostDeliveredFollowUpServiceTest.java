@@ -4,6 +4,7 @@ import com.shipway.ordertracking.config.BotspaceAccount;
 import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.dto.BotspaceMessageRequest;
 import com.shipway.ordertracking.repository.OrderPhoneProjection;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -59,22 +60,23 @@ class PostDeliveredFollowUpServiceTest {
     void sendFollowUpToYesterdayDelivered_sendsWhenEligible() {
         OrderPhoneProjection row = mock(OrderPhoneProjection.class);
         when(row.getOrderId()).thenReturn("#1001");
-        when(row.getAccountCode()).thenReturn("STRI");
+        when(row.getAccountCode()).thenReturn(BrandAccountKey.STRIKER_STORE);
+        when(row.getBrandName()).thenReturn(null);
         when(row.getShippingPhone()).thenReturn("+919876543210");
 
         when(customerMessageTrackingService.findOrderIdAndPhoneForSentDeliveredYesterday()).thenReturn(List.of(row));
-        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq("STRI"), anyList())).thenReturn(false);
+        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq(""), anyList())).thenReturn(false);
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setPostDeliveredFollowUpTemplateId("tpl_followup");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(BotspaceMessageRequest.class), eq("#1001"),
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(BotspaceMessageRequest.class), eq("#1001"),
                 eq("sent_postDeliveredFollowUp"), eq("failed_postDeliveredFollowUp"))).thenReturn(true);
 
         service.sendFollowUpToYesterdayDelivered();
 
-        verify(botspaceService).sendTemplateMessage(eq("STRI"), any(BotspaceMessageRequest.class), eq("#1001"),
+        verify(botspaceService).sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(BotspaceMessageRequest.class), eq("#1001"),
                 eq("sent_postDeliveredFollowUp"), eq("failed_postDeliveredFollowUp"));
     }
 
@@ -82,10 +84,11 @@ class PostDeliveredFollowUpServiceTest {
     void sendFollowUpToYesterdayDelivered_skipsWhenAlreadyFollowedUp() {
         OrderPhoneProjection row = mock(OrderPhoneProjection.class);
         when(row.getOrderId()).thenReturn("#1001");
-        when(row.getAccountCode()).thenReturn("STRI");
+        when(row.getAccountCode()).thenReturn(BrandAccountKey.STRIKER_STORE);
+        when(row.getBrandName()).thenReturn(null);
 
         when(customerMessageTrackingService.findOrderIdAndPhoneForSentDeliveredYesterday()).thenReturn(List.of(row));
-        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq("STRI"), anyList())).thenReturn(true);
+        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq(""), anyList())).thenReturn(true);
 
         service.sendFollowUpToYesterdayDelivered();
 

@@ -5,6 +5,7 @@ import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.config.ShopifyAccount;
 import com.shipway.ordertracking.config.ShopifyProperties;
 import com.shipway.ordertracking.dto.StatusUpdateWebhook;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -49,7 +50,7 @@ class DeliveredFlowServiceTest {
     private StatusUpdateWebhook.OrderStatus baseOrder() {
         StatusUpdateWebhook.OrderStatus o = new StatusUpdateWebhook.OrderStatus();
         o.setOrderId("254120");
-        o.setBrandName("STRI");
+        o.setBrandName(BrandAccountKey.STRIKER_STORE);
         o.setShippingPhone("+919876543210");
         o.setCurrentShipmentStatus("DELIVERED");
         o.setPreviousStatus("OUT FOR DELIVERY");
@@ -80,7 +81,7 @@ class DeliveredFlowServiceTest {
 
     @Test
     void processDelivered_alreadyInDb_returnsTrue() {
-        when(customerMessageTrackingService.hasAnyStatus(eq("254120"), eq("STRI"), anyList())).thenReturn(true);
+        when(customerMessageTrackingService.hasAnyStatus(eq("254120"), eq(BrandAccountKey.STRIKER_STORE), anyList())).thenReturn(true);
         assertTrue(service.processDelivered(baseOrder()));
     }
 
@@ -93,15 +94,15 @@ class DeliveredFlowServiceTest {
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setDeliveredTemplateId("tpl_del");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
         ShopifyAccount sa = new ShopifyAccount();
         sa.setProductUrl("https://www.example.com/products/");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
 
-        when(shopifyService.getOrderProductDetails(eq("STRI"), eq("254120_CLONE"))).thenReturn(Collections.emptyList());
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(), eq("254120_CLONE"), eq("sent_delivered"),
-                eq("failed_delivered"))).thenReturn(true);
+        when(shopifyService.getOrderProductDetails(eq(BrandAccountKey.STRIKER_STORE), eq("254120_CLONE"))).thenReturn(Collections.emptyList());
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(), eq("254120_CLONE"), eq("sent_delivered"),
+                eq("failed_delivered"), any(), any())).thenReturn(true);
 
         assertTrue(service.processDelivered(o));
     }
@@ -124,21 +125,21 @@ class DeliveredFlowServiceTest {
         fl.add(Map.of("id", "gid://shopify/Fulfillment/555"));
         orderNode.put("fulfillments", fl);
 
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(254120L), eq(555L), any(), eq("delivered")))
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(254120L), eq(555L), any(), eq("delivered")))
                 .thenReturn(true);
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setDeliveredTemplateId("tpl_del");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
         ShopifyAccount sa = new ShopifyAccount();
         sa.setProductUrl("https://example.com/products/");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
 
-        when(shopifyService.getOrderProductDetails("STRI", "254120")).thenReturn(Collections.emptyList());
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(), eq("254120"), eq("sent_delivered"),
-                eq("failed_delivered"))).thenReturn(true);
+        when(shopifyService.getOrderProductDetails(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(Collections.emptyList());
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(), eq("254120"), eq("sent_delivered"),
+                eq("failed_delivered"), any(), any())).thenReturn(true);
 
         assertTrue(service.processDelivered(baseOrder()));
     }
@@ -150,26 +151,26 @@ class DeliveredFlowServiceTest {
         Map<String, Object> orderNode = new HashMap<>();
         orderNode.put("id", "gid://shopify/Order/254120");
         orderNode.put("displayFulfillmentStatus", "UNFULFILLED");
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
 
         Map<String, Object> foData = Map.of();
-        when(shopifyService.getFulfillmentOrdersForOrder("STRI", "gid://shopify/Order/254120")).thenReturn(foData);
+        when(shopifyService.getFulfillmentOrdersForOrder(BrandAccountKey.STRIKER_STORE, "gid://shopify/Order/254120")).thenReturn(foData);
         when(shopifyService.getOpenFulfillmentOrderIdFromEdges(foData)).thenReturn("gid://shopify/FulfillmentOrder/9");
-        when(shopifyService.createFulfillment(eq("STRI"), eq(254120L), eq("gid://shopify/FulfillmentOrder/9"), any(),
+        when(shopifyService.createFulfillment(eq(BrandAccountKey.STRIKER_STORE), eq(254120L), eq("gid://shopify/FulfillmentOrder/9"), any(),
                 any())).thenReturn(42L);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(254120L), eq(42L), any(), eq("delivered")))
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(254120L), eq(42L), any(), eq("delivered")))
                 .thenReturn(true);
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setDeliveredTemplateId("tpl_del");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
         ShopifyAccount sa = new ShopifyAccount();
         sa.setProductUrl("https://example.com/products/");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
 
-        when(shopifyService.getOrderProductDetails("STRI", "254120")).thenReturn(Collections.emptyList());
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(), eq("254120"), eq("sent_delivered"),
-                eq("failed_delivered"))).thenReturn(true);
+        when(shopifyService.getOrderProductDetails(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(Collections.emptyList());
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(), eq("254120"), eq("sent_delivered"),
+                eq("failed_delivered"), any(), any())).thenReturn(true);
 
         StatusUpdateWebhook.OrderStatus o = baseOrder();
         o.setAwb("AWB1");

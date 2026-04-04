@@ -85,6 +85,9 @@ public class OrderTrackingBulkFulfillmentService {
             row.setOrderId(item.getOrderId());
             row.setOrderTrackingStatus(item.getOrderTrackingStatus());
 
+            String shopifyKey = effectiveShopifyKey(item);
+            String labelsAcct = item.getAccountCode();
+
             String shopifyStatus = mapTrackingStatusToShopifyShipmentStatus(item.getOrderTrackingStatus());
             if (shopifyStatus == null) {
                 row.setSuccess(false);
@@ -106,9 +109,9 @@ public class OrderTrackingBulkFulfillmentService {
 
             summary.merge("attempted", 1, Integer::sum);
             String norm = ShopifyService.normalizeShopifyOrderNameKey(item.getOrderId());
-            String awb = labelAwbRepository.findLatestAwb(item.getAccountCode(), norm).orElse(null);
-            String trackingUrl = buildTrackingUrl(item.getAccountCode(), awb);
-            boolean ok = fulfillOne(item.getAccountCode(), item.getOrderId(), shopifyStatus, awb, trackingUrl);
+            String awb = labelAwbRepository.findLatestAwb(labelsAcct, norm).orElse(null);
+            String trackingUrl = buildTrackingUrl(shopifyKey, awb);
+            boolean ok = fulfillOne(shopifyKey, labelsAcct, item.getOrderId(), shopifyStatus, awb, trackingUrl);
             row.setSuccess(ok);
             row.setMessage(ok ? "OK" : "Shopify fulfillment failed — see application logs");
             out.getResults().add(row);
@@ -123,19 +126,33 @@ public class OrderTrackingBulkFulfillmentService {
         return out;
     }
 
+    /** Same as {@link #fulfillSingleOrder(String, String, String, String)} with no separate Shopify key (legacy). */
+    public FulfillAttemptResult fulfillSingleOrder(String trackingAccountCode, String orderId,
+            String orderTrackingStatus) {
+        return fulfillSingleOrder(trackingAccountCode, orderId, orderTrackingStatus, null);
+    }
+
     /**
      * Fulfill / update Shopify for one order (UI or API). Only statuses that map to delivered, in transit, or OFD.
+     *
+     * @param trackingAccountCode {@code order_tracking} / {@code labels} account_code
+     * @param shopifyBrandName    optional {@code shopify.accounts} key; when blank, {@code trackingAccountCode} is used for Shopify too (legacy)
      */
-    public FulfillAttemptResult fulfillSingleOrder(String accountCode, String orderId, String orderTrackingStatus) {
+    public FulfillAttemptResult fulfillSingleOrder(String trackingAccountCode, String orderId, String orderTrackingStatus,
+            String shopifyBrandName) {
         FulfillAttemptResult r = new FulfillAttemptResult();
-        r.setAccountCode(accountCode != null ? accountCode.toUpperCase() : null);
+        r.setAccountCode(trackingAccountCode != null ? trackingAccountCode.trim().toUpperCase() : null);
         r.setOrderId(orderId);
         r.setOrderTrackingStatus(orderTrackingStatus);
 
-        log.info("fulfillSingleOrder start: account={} orderId={} orderTrackingStatus={}", accountCode, orderId,
-                orderTrackingStatus);
+        String shopifyKey = (shopifyBrandName != null && !shopifyBrandName.isBlank())
+                ? shopifyBrandName.trim()
+                : (trackingAccountCode != null ? trackingAccountCode.trim() : null);
 
-        if (accountCode == null || accountCode.isBlank() || orderId == null || orderId.isBlank()) {
+        log.info("fulfillSingleOrder start: trackingAccount={} shopifyKey={} orderId={} orderTrackingStatus={}",
+                trackingAccountCode, shopifyKey, orderId, orderTrackingStatus);
+
+        if (trackingAccountCode == null || trackingAccountCode.isBlank() || orderId == null || orderId.isBlank()) {
             r.setSuccess(false);
             r.setMessage("accountCode and orderId are required");
             log.warn("fulfillSingleOrder aborted: missing accountCode or orderId");
@@ -153,16 +170,24 @@ public class OrderTrackingBulkFulfillmentService {
         r.setShopifyShipmentStatus(shopifyStatus);
 
         String norm = ShopifyService.normalizeShopifyOrderNameKey(orderId);
-        String awb = labelAwbRepository.findLatestAwb(accountCode, norm).orElse(null);
-        String trackingUrl = buildTrackingUrl(accountCode, awb);
+        String awb = labelAwbRepository.findLatestAwb(trackingAccountCode.trim(), norm).orElse(null);
+        String trackingUrl = buildTrackingUrl(shopifyKey, awb);
         log.info("fulfillSingleOrder: mapped shopifyShipmentStatus={} normalizedOrderKey={} awbFromLabels={} trackingUrlConfigured={}",
                 shopifyStatus, norm, awb != null && !awb.isBlank(), trackingUrl != null && !trackingUrl.isBlank());
 
-        boolean ok = fulfillOne(accountCode.trim(), orderId.trim(), shopifyStatus, awb, trackingUrl);
+        boolean ok = fulfillOne(shopifyKey, trackingAccountCode.trim(), orderId.trim(), shopifyStatus, awb, trackingUrl);
         r.setSuccess(ok);
         r.setMessage(ok ? "Shopify updated successfully" : "Failed — check server logs");
-        log.info("fulfillSingleOrder end: account={} orderId={} success={}", accountCode.trim(), orderId.trim(), ok);
+        log.info("fulfillSingleOrder end: trackingAccount={} orderId={} success={}", trackingAccountCode.trim(),
+                orderId.trim(), ok);
         return r;
+    }
+
+    private static String effectiveShopifyKey(UnfulfilledShopifyOrderItem item) {
+        if (item.getShopifyBrandName() != null && !item.getShopifyBrandName().isBlank()) {
+            return item.getShopifyBrandName().trim();
+        }
+        return item.getAccountCode() != null ? item.getAccountCode().trim() : "";
     }
 
     /**
@@ -201,8 +226,13 @@ public class OrderTrackingBulkFulfillmentService {
         return null;
     }
 
-    private boolean fulfillOne(String accountCode, String orderId, String shopifyShipmentStatus, String awb,
-            String trackingUrl) {
+    /**
+     * @param shopifyKey            {@code shopify.accounts} map key
+     * @param trackingAccountCode   {@code labels} / {@code order_tracking} account_code (not sent to Shopify Admin)
+     */
+    private boolean fulfillOne(String shopifyKey, String trackingAccountCode, String orderId,
+            String shopifyShipmentStatus, String awb, String trackingUrl) {
+        log.debug("fulfillOne shopifyKey={} labelsAccount={} orderId={}", shopifyKey, trackingAccountCode, orderId);
         if (orderId == null || orderId.isBlank()) {
             return false;
         }
@@ -211,9 +241,9 @@ public class OrderTrackingBulkFulfillmentService {
             return false;
         }
 
-        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(accountCode, orderId);
+        Map<String, Object> orderNode = shopifyService.getOrderWithDisplayFulfillmentStatus(shopifyKey, orderId);
         if (orderNode == null) {
-            log.warn("Order not found in Shopify: {} ({})", orderId, accountCode);
+            log.warn("Order not found in Shopify: {} (shopifyKey={})", orderId, shopifyKey);
             return false;
         }
 
@@ -222,29 +252,29 @@ public class OrderTrackingBulkFulfillmentService {
                 : null;
 
         if (display != null && "FULFILLED".equalsIgnoreCase(display.trim())) {
-            log.info("fulfillOne path: order already FULFILLED — update tracking only orderId={} ({})", orderId,
-                    accountCode);
-            return updateTrackingOnExistingFulfillment(accountCode, orderId, orderNode, shopifyShipmentStatus, awb);
+            log.info("fulfillOne path: order already FULFILLED — update tracking only orderId={} (shopifyKey={})",
+                    orderId, shopifyKey);
+            return updateTrackingOnExistingFulfillment(shopifyKey, orderId, orderNode, shopifyShipmentStatus, awb);
         }
 
-        log.info("fulfillOne path: create fulfillment + tracking orderId={} ({}) displayStatus={}", orderId, accountCode,
-                display);
+        log.info("fulfillOne path: create fulfillment + tracking orderId={} (shopifyKey={}) displayStatus={}", orderId,
+                shopifyKey, display);
 
         String orderGid = orderNode.get("id") != null ? orderNode.get("id").toString() : null;
         if (orderGid == null) {
-            log.warn("fulfillOne: missing order GID for {} ({})", orderId, accountCode);
+            log.warn("fulfillOne: missing order GID for {} (shopifyKey={})", orderId, shopifyKey);
             return false;
         }
 
-        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(accountCode, orderGid);
+        Map<String, Object> fulfillmentOrdersData = shopifyService.getFulfillmentOrdersForOrder(shopifyKey, orderGid);
         if (fulfillmentOrdersData == null) {
-            log.warn("fulfillOne: no fulfillment orders payload for {} ({})", orderId, accountCode);
+            log.warn("fulfillOne: no fulfillment orders payload for {} (shopifyKey={})", orderId, shopifyKey);
             return false;
         }
 
         String openFulfillmentOrderId = shopifyService.getOpenFulfillmentOrderIdFromEdges(fulfillmentOrdersData);
         if (openFulfillmentOrderId == null || openFulfillmentOrderId.isEmpty()) {
-            log.warn("No OPEN fulfillment order for {} ({})", orderId, accountCode);
+            log.warn("No OPEN fulfillment order for {} (shopifyKey={})", orderId, shopifyKey);
             return false;
         }
 
@@ -253,29 +283,29 @@ public class OrderTrackingBulkFulfillmentService {
             return false;
         }
 
-        Long fulfillmentId = shopifyService.createFulfillment(accountCode, numericOrderId, openFulfillmentOrderId,
+        Long fulfillmentId = shopifyService.createFulfillment(shopifyKey, numericOrderId, openFulfillmentOrderId,
                 awb, trackingUrl);
         if (fulfillmentId == null) {
-            fulfillmentId = shopifyService.getFulfillmentId(accountCode, numericOrderId);
+            fulfillmentId = shopifyService.getFulfillmentId(shopifyKey, numericOrderId);
         }
         if (fulfillmentId == null) {
-            log.warn("Could not create or resolve fulfillment for {} ({})", orderId, accountCode);
+            log.warn("Could not create or resolve fulfillment for {} (shopifyKey={})", orderId, shopifyKey);
             return false;
         }
 
-        if (!shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, awb,
+        if (!shopifyService.updateFulfillmentTracking(shopifyKey, numericOrderId, fulfillmentId, awb,
                 shopifyShipmentStatus)) {
-            log.error("updateFulfillmentTracking failed for {} ({})", orderId, accountCode);
+            log.error("updateFulfillmentTracking failed for {} (shopifyKey={})", orderId, shopifyKey);
             return false;
         }
 
-        log.info("✅ Fulfilled / updated tracking for order {} ({}) status={}", orderId, accountCode,
+        log.info("✅ Fulfilled / updated tracking for order {} (shopifyKey={}) status={}", orderId, shopifyKey,
                 shopifyShipmentStatus);
         return true;
     }
 
     @SuppressWarnings("unchecked")
-    private boolean updateTrackingOnExistingFulfillment(String accountCode, String orderId,
+    private boolean updateTrackingOnExistingFulfillment(String shopifyKey, String orderId,
             Map<String, Object> orderNode, String shopifyShipmentStatus, String awb) {
         Long numericOrderId = ShopifyService.parseNumericIdFromGid(
                 orderNode.get("id") != null ? orderNode.get("id").toString() : null, "gid://shopify/Order/");
@@ -296,21 +326,21 @@ public class OrderTrackingBulkFulfillmentService {
             }
         }
         if (fulfillmentId == null) {
-            fulfillmentId = shopifyService.getFulfillmentId(accountCode, numericOrderId);
+            fulfillmentId = shopifyService.getFulfillmentId(shopifyKey, numericOrderId);
         }
         if (fulfillmentId == null) {
-            log.warn("No fulfillment id for already-fulfilled order {} ({})", orderId, accountCode);
+            log.warn("No fulfillment id for already-fulfilled order {} (shopifyKey={})", orderId, shopifyKey);
             return false;
         }
 
-        boolean ok = shopifyService.updateFulfillmentTracking(accountCode, numericOrderId, fulfillmentId, awb,
+        boolean ok = shopifyService.updateFulfillmentTracking(shopifyKey, numericOrderId, fulfillmentId, awb,
                 shopifyShipmentStatus);
         if (ok) {
-            log.info("✅ Updated tracking on existing fulfillment for {} ({}) status={} awb={}", orderId, accountCode,
-                    shopifyShipmentStatus, awb != null ? "(set)" : "(none)");
+            log.info("✅ Updated tracking on existing fulfillment for {} (shopifyKey={}) status={} awb={}", orderId,
+                    shopifyKey, shopifyShipmentStatus, awb != null ? "(set)" : "(none)");
         } else {
-            log.error("updateFulfillmentTracking failed for already-fulfilled order {} ({}) fulfillmentId={}", orderId,
-                    accountCode, fulfillmentId);
+            log.error("updateFulfillmentTracking failed for already-fulfilled order {} (shopifyKey={}) fulfillmentId={}",
+                    orderId, shopifyKey, fulfillmentId);
         }
         return ok;
     }

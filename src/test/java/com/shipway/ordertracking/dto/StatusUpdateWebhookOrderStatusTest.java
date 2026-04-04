@@ -1,5 +1,6 @@
 package com.shipway.ordertracking.dto;
 
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,24 +26,34 @@ class StatusUpdateWebhookOrderStatusTest {
     }
 
     @Test
-    void resolveBrandName_strikerStoreAlias_returnsStri() {
+    void resolveBrandName_strikerStoreAlias_returnsStrikerStoreKey() {
         StatusUpdateWebhook.OrderStatus o = new StatusUpdateWebhook.OrderStatus();
         o.setBrandName("Striker Store");
-        assertEquals("STRI", o.resolveBrandName());
+        assertEquals(BrandAccountKey.STRIKER_STORE, o.resolveBrandName());
     }
 
     @Test
-    void resolveBrandName_dribbleStoreAlias_returnsDrib() {
+    void resolveBrandName_dribbleStoreAlias_returnsDribbleStoreKey() {
         StatusUpdateWebhook.OrderStatus o = new StatusUpdateWebhook.OrderStatus();
         o.setBrandName("Dribble Store");
-        assertEquals("DRIB", o.resolveBrandName());
+        assertEquals(BrandAccountKey.DRIBBLE_STORE, o.resolveBrandName());
     }
 
     @Test
-    void resolveBrandName_configKey_returnsTrimmed() {
+    void resolveBrandName_legacySpacedConfigKeys_mapToCanonical() {
+        StatusUpdateWebhook.OrderStatus striker = new StatusUpdateWebhook.OrderStatus();
+        striker.setBrandName("STRIKER STORE");
+        assertEquals(BrandAccountKey.STRIKER_STORE, striker.resolveBrandName());
+        StatusUpdateWebhook.OrderStatus dribble = new StatusUpdateWebhook.OrderStatus();
+        dribble.setBrandName("DRIBBLE STORE");
+        assertEquals(BrandAccountKey.DRIBBLE_STORE, dribble.resolveBrandName());
+    }
+
+    @Test
+    void resolveBrandName_configKeyPassthrough_returnsTrimmed() {
         StatusUpdateWebhook.OrderStatus o = new StatusUpdateWebhook.OrderStatus();
-        o.setBrandName("  STRI  ");
-        assertEquals("STRI", o.resolveBrandName());
+        o.setBrandName("  " + BrandAccountKey.STRIKER_STORE + "  ");
+        assertEquals(BrandAccountKey.STRIKER_STORE, o.resolveBrandName());
     }
 
     @Test

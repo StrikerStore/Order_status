@@ -1,6 +1,7 @@
 package com.shipway.ordertracking.service;
 
 import com.shipway.ordertracking.dto.StatusUpdateWebhook;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -42,7 +43,7 @@ class WebhookProcessingServiceTest {
         StatusUpdateWebhook.OrderStatus o = new StatusUpdateWebhook.OrderStatus();
         o.setOrderId(orderId);
         o.setShippingPhone(phone);
-        o.setBrandName("STRI");
+        o.setBrandName(BrandAccountKey.STRIKER_STORE);
         o.setCurrentShipmentStatus(status);
         return o;
     }

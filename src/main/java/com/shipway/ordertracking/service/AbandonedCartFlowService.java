@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import com.shipway.ordertracking.config.BotspaceAccount;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import com.shipway.ordertracking.util.PhoneNumberUtil;
 
 @Service
@@ -59,7 +60,7 @@ public class AbandonedCartFlowService {
             log.info("Using abandoned-cart test phone override");
         }
 
-        // Brand key (STRI / DRIB / …) from landing_page_url or checkout_url
+        // Brand key (e.g. STRIKER STORE / DRIBBLE STORE) from landing_page_url or checkout_url
         String brandName = extractBrandNameFromWebhook(webhook);
         log.info("Resolved brand name: {} for abandoned cart", brandName);
 
@@ -173,10 +174,10 @@ public class AbandonedCartFlowService {
                     log.debug("Extracted domain part '{}' from URL: {}", domainPart, landingPageUrl);
                     String lower = domainPart.toLowerCase();
                     if ("thestrikerstore".equals(lower)) {
-                        return "STRI";
+                        return BrandAccountKey.STRIKER_STORE;
                     }
                     if ("thedribblestore".equals(lower)) {
-                        return "DRIB";
+                        return BrandAccountKey.DRIBBLE_STORE;
                     }
                     return domainPart.toUpperCase();
                 }

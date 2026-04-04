@@ -44,7 +44,7 @@ public class BotspaceService {
      * @return true if message sent successfully, false otherwise
      */
     public boolean sendTemplateMessage(String accountCode, BotspaceMessageRequest request, String orderId) {
-        return sendTemplateMessage(accountCode, request, orderId, "sent", "failed");
+        return sendTemplateMessage(accountCode, request, orderId, "sent", "failed", null, null);
     }
 
     /**
@@ -59,12 +59,31 @@ public class BotspaceService {
      */
     public boolean sendTemplateMessage(String accountCode, BotspaceMessageRequest request, String orderId,
             String successStatus, String failureStatus) {
+        return sendTemplateMessage(accountCode, request, orderId, successStatus, failureStatus, null, null);
+    }
+
+    /**
+     * Same as {@link #sendTemplateMessage(String, BotspaceMessageRequest, String, String, String)} but persists
+     * webhook-style {@code account_code} and {@code brand_name} on {@code customer_message_tracking} when either is
+     * non-blank. Otherwise falls back to {@link CustomerMessageTrackingService#addStatus(String, String, String)} using
+     * the Botspace key ({@code accountCode}) only (legacy rows / order-created / follow-up).
+     */
+    public boolean sendTemplateMessage(String accountCode, BotspaceMessageRequest request, String orderId,
+            String successStatus, String failureStatus, String messageTrackingAccountCode,
+            String messageTrackingBrandName) {
         boolean sent = sendTemplateMessage(accountCode, request);
 
         if (orderId != null && !orderId.isEmpty() && accountCode != null && !accountCode.isEmpty()) {
             String status = sent ? successStatus : failureStatus;
             try {
-                customerMessageTrackingService.addStatus(orderId, accountCode, status);
+                String tact = messageTrackingAccountCode != null ? messageTrackingAccountCode.trim() : "";
+                String tbrand = messageTrackingBrandName != null ? messageTrackingBrandName.trim() : "";
+                if (!tact.isEmpty() || !tbrand.isEmpty()) {
+                    customerMessageTrackingService.addStatus(orderId, tact, status,
+                            tbrand.isEmpty() ? null : tbrand);
+                } else {
+                    customerMessageTrackingService.addStatus(orderId, accountCode, status);
+                }
             } catch (Exception e) {
                 log.error("Failed to add message status for order {}: {}", orderId, e.getMessage());
             }

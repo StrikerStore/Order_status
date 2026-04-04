@@ -5,6 +5,7 @@ import com.shipway.ordertracking.config.BotspaceProperties;
 import com.shipway.ordertracking.config.ShopifyAccount;
 import com.shipway.ordertracking.dto.BotspaceMessageRequest;
 import com.shipway.ordertracking.dto.ShopifyOrderCreatedWebhook;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -76,15 +77,15 @@ class OrderCreatedFlowServiceTest {
         ShopifyAccount sa = new ShopifyAccount();
         sa.setShop("seq5t1-mz.myshopify.com");
         Map<String, ShopifyAccount> accounts = new HashMap<>();
-        accounts.put("STRI", sa);
+        accounts.put(BrandAccountKey.STRIKER_STORE, sa);
         when(shopifyProperties.getAccounts()).thenReturn(accounts);
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setOrderCreatedTemplateId("tpl_order_created");
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(ba);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
-        when(botspaceService.sendTemplateMessage(eq("STRI"), any(BotspaceMessageRequest.class), eq("#1001"),
+        when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(BotspaceMessageRequest.class), eq("#1001"),
                 eq("sent_orderCreated"), eq("failed_orderCreated"))).thenReturn(true);
 
         ShopifyOrderCreatedWebhook w = new ShopifyOrderCreatedWebhook();
@@ -94,7 +95,7 @@ class OrderCreatedFlowServiceTest {
         assertTrue(service.processShopifyOrderCreated(w, "seq5t1-mz.myshopify.com"));
 
         ArgumentCaptor<BotspaceMessageRequest> cap = ArgumentCaptor.forClass(BotspaceMessageRequest.class);
-        verify(botspaceService).sendTemplateMessage(eq("STRI"), cap.capture(), eq("#1001"), eq("sent_orderCreated"),
+        verify(botspaceService).sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), cap.capture(), eq("#1001"), eq("sent_orderCreated"),
                 eq("failed_orderCreated"));
         assertEquals("tpl_order_created", cap.getValue().getTemplateId());
     }
@@ -103,9 +104,9 @@ class OrderCreatedFlowServiceTest {
     void processShopifyOrderCreated_templateMissing_returnsFalse() {
         ShopifyAccount sa = new ShopifyAccount();
         sa.setShop("seq5t1-mz.myshopify.com");
-        when(shopifyProperties.getAccounts()).thenReturn(Map.of("STRI", sa));
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(sa);
-        when(botspaceProperties.getAccountByCode("STRI")).thenReturn(new BotspaceAccount());
+        when(shopifyProperties.getAccounts()).thenReturn(Map.of(BrandAccountKey.STRIKER_STORE, sa));
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(sa);
+        when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(new BotspaceAccount());
 
         ShopifyOrderCreatedWebhook w = new ShopifyOrderCreatedWebhook();
         w.setName("#1001");

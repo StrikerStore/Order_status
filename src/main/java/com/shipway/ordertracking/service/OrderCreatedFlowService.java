@@ -45,7 +45,7 @@ public class OrderCreatedFlowService {
     public boolean processShopifyOrderCreated(ShopifyOrderCreatedWebhook webhook, String shopDomain) {
         log.info("Processing Shopify order created flow for order: {}", webhook.getName());
 
-        // Resolve brand key (STRI / DRIB / …) from shop domain to match shopify.accounts / botspace.accounts
+        // Resolve brand key (e.g. STRIKER STORE / DRIBBLE STORE) from shop domain to match shopify.accounts / botspace.accounts
         String brandName = extractBrandNameFromShopDomain(shopDomain);
         if (brandName == null || brandName.isEmpty()) {
             log.warn("Cannot determine brand name from shop domain: {}", shopDomain);
@@ -108,7 +108,7 @@ public class OrderCreatedFlowService {
     }
 
     /**
-     * Resolve configured brand key from Shopify shop domain (e.g. seq5t1-mz.myshopify.com → STRI).
+     * Resolve configured brand key from Shopify shop domain (e.g. seq5t1-mz.myshopify.com → STRIKER STORE).
      */
     private String extractBrandNameFromShopDomain(String shopDomain) {
         if (shopDomain == null || shopDomain.isEmpty()) {
@@ -129,7 +129,7 @@ public class OrderCreatedFlowService {
             }
         }
 
-        // If no match found, try to extract from shop name (e.g., shop-stri -> STRI)
+        // If no match found, try to extract from shop name (last segment after '-', uppercased)
         if (shopName.contains("-")) {
             String[] parts = shopName.split("-");
             if (parts.length > 1) {

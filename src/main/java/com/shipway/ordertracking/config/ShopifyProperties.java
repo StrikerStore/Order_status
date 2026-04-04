@@ -4,9 +4,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
-
-import com.shipway.ordertracking.config.ShopifyAccount;
 
 @Component
 @ConfigurationProperties(prefix = "shopify")
@@ -29,13 +28,29 @@ public class ShopifyProperties {
     }
 
     /**
-     * Get Shopify account configuration by account code
+     * Get Shopify account configuration by map key ({@code shopify.accounts.*}).
+     * Matches exact key, then a space-insensitive lowercase form (e.g. {@code STRIKER STORE} → {@code strikerstore}).
      */
     public ShopifyAccount getAccountByCode(String accountCode) {
         if (accountCode == null || accountCode.isEmpty()) {
             return null;
         }
-        return accounts.get(accountCode.toUpperCase());
+        String trimmed = accountCode.trim();
+        ShopifyAccount direct = accounts.get(trimmed);
+        if (direct != null) {
+            return direct;
+        }
+        String norm = normalizeAccountMapKey(trimmed);
+        for (Map.Entry<String, ShopifyAccount> e : accounts.entrySet()) {
+            if (e.getKey() != null && normalizeAccountMapKey(e.getKey()).equals(norm)) {
+                return e.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static String normalizeAccountMapKey(String key) {
+        return key.replace(" ", "").toLowerCase(Locale.ROOT);
     }
 
     /** Shopify Admin API version (e.g. 2025-07) */

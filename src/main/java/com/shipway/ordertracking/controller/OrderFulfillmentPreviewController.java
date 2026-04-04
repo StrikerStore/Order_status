@@ -34,7 +34,7 @@ public class OrderFulfillmentPreviewController {
      * {@code order_tracking} row and returns those whose {@code shipment_status} is in transit,
      * out for delivery, RTO, delivered, or undelivered (incl. picked up, not delivered).
      *
-     * @param accountCode optional STRI / DRIB / … (omit to run all configured Shopify accounts)
+     * @param accountCode optional shopify.accounts key (omit to run all configured Shopify accounts)
      * @param limit       max Shopify unfulfilled orders loaded per account (capped by {@code shopify.preview.bulk-orders-max}), default 200, max 2000
      */
     @GetMapping("/unfulfilled-with-tracking-status")

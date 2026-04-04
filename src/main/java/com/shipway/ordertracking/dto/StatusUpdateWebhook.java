@@ -3,6 +3,7 @@ package com.shipway.ordertracking.dto;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.shipway.ordertracking.util.BrandAccountKey;
 
 import java.util.List;
 
@@ -222,22 +223,44 @@ public class StatusUpdateWebhook {
         }
 
         /**
-         * Resolved brand key for Shopify/Botspace ({@code shopify.accounts} / {@code botspace.accounts})
-         * and for {@code customer_message_tracking.account_code}. Trims {@code brand_name}, applies
-         * display-name aliases, or returns {@code null} if missing/blank.
+         * Resolved brand key for Shopify/Botspace ({@code shopify.accounts} / {@code botspace.accounts}).
+         * Normalizes display names and legacy spaced keys to {@link BrandAccountKey#STRIKER_STORE} /
+         * {@link BrandAccountKey#DRIBBLE_STORE}; otherwise returns trimmed {@code brand_name}, or {@code null} if missing/blank.
          */
         public String resolveBrandName() {
             String raw = this.brandName;
             if (raw == null || raw.isBlank()) {
                 return null;
             }
-            if ("Striker Store".equals(raw)) {
-                return "STRI";
+            String t = raw.trim();
+            if ("Striker Store".equalsIgnoreCase(t) || "STRIKER STORE".equalsIgnoreCase(t)) {
+                return BrandAccountKey.STRIKER_STORE;
             }
-            if ("Dribble Store".equals(raw)) {
-                return "DRIB";
+            if ("Dribble Store".equalsIgnoreCase(t) || "DRIBBLE STORE".equalsIgnoreCase(t)) {
+                return BrandAccountKey.DRIBBLE_STORE;
             }
-            return raw.trim();
+            return t;
+        }
+
+        /**
+         * Webhook {@code account_code} for {@code customer_message_tracking} (not the Botspace/Shopify key).
+         * {@code null} when absent — do not substitute {@link #resolveBrandName()}.
+         */
+        public String trackingAccountCodeFromRequest() {
+            if (accountCode == null || accountCode.isBlank()) {
+                return null;
+            }
+            return accountCode.trim();
+        }
+
+        /**
+         * Webhook {@code brand_name} as sent (trimmed) for {@code customer_message_tracking}.
+         */
+        public String trackingBrandNameFromRequest() {
+            if (brandName == null || brandName.isBlank()) {
+                return null;
+            }
+            return brandName.trim();
         }
 
         public String getCarrierId() {

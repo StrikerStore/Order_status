@@ -151,7 +151,7 @@
             <div class="row">
                 <div>
                     <label for="accountCode">Account code</label>
-                    <input id="accountCode" type="text" name="accountCode" th:value="${filterAccountCode}" placeholder="STRI, DRIB, …"/>
+                    <input id="accountCode" type="text" name="accountCode" th:value="${filterAccountCode}" placeholder="STRIKER STORE, PLX001, …"/>
                 </div>
                 <div>
                     <label for="orderId">Order ID</label>
@@ -188,6 +188,7 @@
                 <th>ID</th>
                 <th>Order ID</th>
                 <th>Account</th>
+                <th>Brand name</th>
                 <th>Message status</th>
                 <th>Created</th>
             </tr>
@@ -197,6 +198,7 @@
                 <td th:text="${row.id}">—</td>
                 <td th:text="${row.orderId}">—</td>
                 <td th:text="${row.accountCode}">—</td>
+                <td th:text="${row.brandName != null ? row.brandName : '—'}">—</td>
                 <td th:text="${row.messageStatus}">—</td>
                 <td th:text="${row.createdAt != null ? row.createdAt : '—'}">—</td>
             </tr>

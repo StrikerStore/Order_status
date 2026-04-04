@@ -6,6 +6,7 @@ import com.shipway.ordertracking.dto.BulkFulfillFromTrackingResponse;
 import com.shipway.ordertracking.dto.UnfulfilledShopifyPreviewResponse;
 import com.shipway.ordertracking.service.OrderTrackingBulkFulfillmentService;
 import com.shipway.ordertracking.service.UnfulfilledShopifyPreviewService;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -51,14 +52,14 @@ class OrderFulfillmentPreviewControllerTest {
     @Test
     void listUnfulfilled_withAccountAndLimit_capsAtMax() throws Exception {
         UnfulfilledShopifyPreviewResponse body = new UnfulfilledShopifyPreviewResponse();
-        when(unfulfilledShopifyPreviewService.buildPreview("STRI", 2000)).thenReturn(body);
+        when(unfulfilledShopifyPreviewService.buildPreview(BrandAccountKey.STRIKER_STORE, 2000)).thenReturn(body);
 
         mockMvc.perform(get("/api/orders/unfulfilled-with-tracking-status")
-                .param("accountCode", "STRI")
+                .param("accountCode", BrandAccountKey.STRIKER_STORE)
                 .param("limit", "9999"))
                 .andExpect(status().isOk());
 
-        verify(unfulfilledShopifyPreviewService).buildPreview("STRI", 2000);
+        verify(unfulfilledShopifyPreviewService).buildPreview(BrandAccountKey.STRIKER_STORE, 2000);
     }
 
     @Test
@@ -80,7 +81,7 @@ class OrderFulfillmentPreviewControllerTest {
         when(orderTrackingBulkFulfillmentService.execute(any(BulkFulfillFromTrackingRequest.class))).thenReturn(out);
 
         BulkFulfillFromTrackingRequest req = new BulkFulfillFromTrackingRequest();
-        req.setAccountCode("STRI");
+        req.setAccountCode(BrandAccountKey.STRIKER_STORE);
         req.setDryRun(true);
 
         mockMvc.perform(post("/api/orders/fulfill-from-tracking")

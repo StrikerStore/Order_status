@@ -3,6 +3,7 @@ package com.shipway.ordertracking.service;
 import com.shipway.ordertracking.config.ShopifyAccount;
 import com.shipway.ordertracking.config.ShopifyProperties;
 import com.shipway.ordertracking.dto.StatusUpdateWebhook;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -37,7 +38,7 @@ class ShopifyFulfillmentFlowServiceTest {
     private StatusUpdateWebhook.OrderStatus baseOrder() {
         StatusUpdateWebhook.OrderStatus o = new StatusUpdateWebhook.OrderStatus();
         o.setOrderId("254120");
-        o.setBrandName("STRI");
+        o.setBrandName(BrandAccountKey.STRIKER_STORE);
         o.setAwb("AWB123");
         return o;
     }
@@ -46,7 +47,7 @@ class ShopifyFulfillmentFlowServiceTest {
     private void stubStriTrackingTemplate() {
         ShopifyAccount acc = new ShopifyAccount();
         acc.setTrackingUrlTemplate("https://track.example/t/{awb}");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(acc);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(acc);
     }
 
     @Test
@@ -78,12 +79,12 @@ class ShopifyFulfillmentFlowServiceTest {
         orderNode.put("displayFulfillmentStatus", "UNFULFILLED");
 
         Map<String, Object> foData = Map.of();
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
-        when(shopifyService.getFulfillmentOrdersForOrder("STRI", "gid://shopify/Order/777")).thenReturn(foData);
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
+        when(shopifyService.getFulfillmentOrdersForOrder(BrandAccountKey.STRIKER_STORE, "gid://shopify/Order/777")).thenReturn(foData);
         when(shopifyService.getOpenFulfillmentOrderIdFromEdges(foData)).thenReturn("gid://shopify/FulfillmentOrder/9");
-        when(shopifyService.createFulfillment(eq("STRI"), eq(777L), eq("gid://shopify/FulfillmentOrder/9"), eq("AWB123"),
+        when(shopifyService.createFulfillment(eq(BrandAccountKey.STRIKER_STORE), eq(777L), eq("gid://shopify/FulfillmentOrder/9"), eq("AWB123"),
                 anyString())).thenReturn(42L);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(777L), eq(42L), eq("AWB123"), eq("LABEL PRINTED")))
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(777L), eq(42L), eq("AWB123"), eq("LABEL PRINTED")))
                 .thenReturn(true);
 
         assertTrue(service.processShopifyFulfillment(o));
@@ -98,12 +99,12 @@ class ShopifyFulfillmentFlowServiceTest {
         orderNode.put("displayFulfillmentStatus", "PARTIAL");
 
         Map<String, Object> foData = Map.of();
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
-        when(shopifyService.getFulfillmentOrdersForOrder("STRI", "gid://shopify/Order/777")).thenReturn(foData);
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
+        when(shopifyService.getFulfillmentOrdersForOrder(BrandAccountKey.STRIKER_STORE, "gid://shopify/Order/777")).thenReturn(foData);
         when(shopifyService.getOpenFulfillmentOrderIdFromEdges(foData)).thenReturn("gid://shopify/FulfillmentOrder/9");
         when(shopifyService.createFulfillment(anyString(), anyLong(), anyString(), any(), any())).thenReturn(null);
-        when(shopifyService.getFulfillmentId("STRI", 777L)).thenReturn(99L);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(777L), eq(99L), eq("AWB123"), eq("LABEL PRINTED")))
+        when(shopifyService.getFulfillmentId(BrandAccountKey.STRIKER_STORE, 777L)).thenReturn(99L);
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(777L), eq(99L), eq("AWB123"), eq("LABEL PRINTED")))
                 .thenReturn(true);
 
         assertTrue(service.processShopifyFulfillment(o));
@@ -122,8 +123,8 @@ class ShopifyFulfillmentFlowServiceTest {
         orderNode.put("displayFulfillmentStatus", "FULFILLED");
         orderNode.put("fulfillments", fulfillments);
 
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(777L), eq(555L), eq("AWB123"), eq("LABEL PRINTED")))
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(777L), eq(555L), eq("AWB123"), eq("LABEL PRINTED")))
                 .thenReturn(true);
 
         assertTrue(service.processShopifyFulfillment(o));
@@ -137,8 +138,8 @@ class ShopifyFulfillmentFlowServiceTest {
         orderNode.put("displayFulfillmentStatus", "UNFULFILLED");
 
         Map<String, Object> foData = Map.of();
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "254120")).thenReturn(orderNode);
-        when(shopifyService.getFulfillmentOrdersForOrder("STRI", "gid://shopify/Order/777")).thenReturn(foData);
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "254120")).thenReturn(orderNode);
+        when(shopifyService.getFulfillmentOrdersForOrder(BrandAccountKey.STRIKER_STORE, "gid://shopify/Order/777")).thenReturn(foData);
         when(shopifyService.getOpenFulfillmentOrderIdFromEdges(foData)).thenReturn(null);
 
         assertFalse(service.processShopifyFulfillment(o));

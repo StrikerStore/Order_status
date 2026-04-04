@@ -78,7 +78,7 @@ public class OutForDeliveryFlowService {
         String orderId = order.getOrderId();
 
         // CHECK 2: Database check - skip if already processed (sent or failed)
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, OUT_FOR_DELIVERY_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), OUT_FOR_DELIVERY_STATUSES)) {
             log.info("Order {} already has out for delivery status in database, skipping out for delivery flow", orderId);
             return true;
         }
@@ -160,7 +160,7 @@ public class OutForDeliveryFlowService {
 
     private boolean processOutForDeliveryWhenFulfilled(String brandName, String orderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderNode) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, OUT_FOR_DELIVERY_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), OUT_FOR_DELIVERY_STATUSES)) {
             log.info("Order {} already has out for delivery status in database, skipping out for delivery flow", orderId);
             return true;
         }
@@ -198,7 +198,7 @@ public class OutForDeliveryFlowService {
 
     private boolean proceedWithTagAndBotspace(String brandName, String orderId, Long numericOrderId,
             StatusUpdateWebhook.OrderStatus order, Map<String, Object> orderDataWithTags) {
-        if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, OUT_FOR_DELIVERY_STATUSES)) {
+        if (customerMessageTrackingService.hasAnyStatus(orderId, order.getBrandName(), OUT_FOR_DELIVERY_STATUSES)) {
             log.info("Order {} already has out for delivery status in database, skipping out for delivery notification", orderId);
             return true;
         }
@@ -228,7 +228,8 @@ public class OutForDeliveryFlowService {
         }
 
         boolean sent = botspaceService.sendTemplateMessage(brandName, request, order.getOrderId(),
-                "sent_outForDelivery", "failed_outForDelivery");
+                "sent_outForDelivery", "failed_outForDelivery", order.trackingAccountCodeFromRequest(),
+                order.trackingBrandNameFromRequest());
         if (sent) {
             log.info("✅ Out for delivery notification sent successfully for order: {} to phone: {}", order.getOrderId(),
                     formattedPhone);
@@ -291,7 +292,7 @@ public class OutForDeliveryFlowService {
     }
 
     /**
-     * Botspace template ID for out-for-delivery, keyed by resolved brand (e.g. STRI).
+     * Botspace template ID for out-for-delivery, keyed by resolved brand (e.g. STRIKER STORE).
      */
     private String getTemplateIdForBrand(String brandName) {
         BotspaceAccount botspaceAccount = botspaceProperties.getAccountByCode(brandName);
@@ -303,4 +304,5 @@ public class OutForDeliveryFlowService {
         log.warn("Out for delivery template ID not found for brand: {}", brandName);
         return null;
     }
+
 }

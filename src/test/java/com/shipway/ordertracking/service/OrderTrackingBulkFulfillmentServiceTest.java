@@ -7,6 +7,7 @@ import com.shipway.ordertracking.dto.FulfillAttemptResult;
 import com.shipway.ordertracking.dto.UnfulfilledShopifyOrderItem;
 import com.shipway.ordertracking.dto.UnfulfilledShopifyPreviewResponse;
 import com.shipway.ordertracking.repository.LabelAwbRepository;
+import com.shipway.ordertracking.util.BrandAccountKey;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -87,10 +88,10 @@ class OrderTrackingBulkFulfillmentServiceTest {
     @Test
     void execute_delegatesToPreview() {
         UnfulfilledShopifyPreviewResponse preview = new UnfulfilledShopifyPreviewResponse();
-        when(unfulfilledShopifyPreviewService.buildPreview("STRI", 500)).thenReturn(preview);
+        when(unfulfilledShopifyPreviewService.buildPreview(BrandAccountKey.STRIKER_STORE, 500)).thenReturn(preview);
 
         BulkFulfillFromTrackingRequest req = new BulkFulfillFromTrackingRequest();
-        req.setAccountCode("STRI");
+        req.setAccountCode(BrandAccountKey.STRIKER_STORE);
 
         BulkFulfillFromTrackingResponse out = service.execute(req);
         assertNotNull(out.getSummary());
@@ -119,7 +120,7 @@ class OrderTrackingBulkFulfillmentServiceTest {
     @Test
     void execute_dryRun_doesNotCallShopifyService() {
         UnfulfilledShopifyOrderItem item = new UnfulfilledShopifyOrderItem();
-        item.setAccountCode("STRI");
+        item.setAccountCode(BrandAccountKey.STRIKER_STORE);
         item.setOrderId("#1001");
         item.setOrderTrackingStatus("Delivered");
         UnfulfilledShopifyPreviewResponse p = new UnfulfilledShopifyPreviewResponse();
@@ -140,7 +141,7 @@ class OrderTrackingBulkFulfillmentServiceTest {
     @Test
     void fulfillPreviewItems_skipsIneligibleStatus() {
         UnfulfilledShopifyOrderItem item = new UnfulfilledShopifyOrderItem();
-        item.setAccountCode("STRI");
+        item.setAccountCode(BrandAccountKey.STRIKER_STORE);
         item.setOrderId("#1");
         item.setOrderTrackingStatus("MYSTERY_STATUS");
 
@@ -153,8 +154,8 @@ class OrderTrackingBulkFulfillmentServiceTest {
     void fulfillSingleOrder_fulfilledPath_updatesTracking() {
         ShopifyAccount acc = new ShopifyAccount();
         acc.setTrackingUrlTemplate("https://track.example/t/{awb}");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(acc);
-        when(labelAwbRepository.findLatestAwb(eq("STRI"), anyString())).thenReturn(Optional.of("AWB1"));
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(acc);
+        when(labelAwbRepository.findLatestAwb(eq(BrandAccountKey.STRIKER_STORE), anyString())).thenReturn(Optional.of("AWB1"));
 
         Map<String, Object> orderNode = new HashMap<>();
         orderNode.put("id", "gid://shopify/Order/777");
@@ -163,11 +164,11 @@ class OrderTrackingBulkFulfillmentServiceTest {
         fulfillments.add(Map.of("id", "gid://shopify/Fulfillment/555"));
         orderNode.put("fulfillments", fulfillments);
 
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "#1001")).thenReturn(orderNode);
-        when(shopifyService.updateFulfillmentTracking(eq("STRI"), eq(777L), eq(555L), eq("AWB1"), eq("delivered")))
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "#1001")).thenReturn(orderNode);
+        when(shopifyService.updateFulfillmentTracking(eq(BrandAccountKey.STRIKER_STORE), eq(777L), eq(555L), eq("AWB1"), eq("delivered")))
                 .thenReturn(true);
 
-        FulfillAttemptResult r = service.fulfillSingleOrder("STRI", "#1001", "Delivered");
+        FulfillAttemptResult r = service.fulfillSingleOrder(BrandAccountKey.STRIKER_STORE, "#1001", "Delivered");
         assertTrue(r.isSuccess());
         assertEquals("delivered", r.getShopifyShipmentStatus());
     }
@@ -177,17 +178,18 @@ class OrderTrackingBulkFulfillmentServiceTest {
         when(labelAwbRepository.findLatestAwb(anyString(), anyString())).thenReturn(Optional.of("AWB1"));
         ShopifyAccount acc = new ShopifyAccount();
         acc.setTrackingUrlTemplate("https://track.example/t/{awb}");
-        when(shopifyProperties.getAccountByCode("STRI")).thenReturn(acc);
-        when(shopifyService.getOrderWithDisplayFulfillmentStatus("STRI", "#1001")).thenReturn(null);
+        when(shopifyProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(acc);
+        when(shopifyService.getOrderWithDisplayFulfillmentStatus(BrandAccountKey.STRIKER_STORE, "#1001")).thenReturn(null);
 
-        FulfillAttemptResult r = service.fulfillSingleOrder("STRI", "#1001", "In Transit");
+        FulfillAttemptResult r = service.fulfillSingleOrder(BrandAccountKey.STRIKER_STORE, "#1001", "In Transit");
         assertFalse(r.isSuccess());
     }
 
     @Test
-    void fulfillSingleOrder_accountCodeUppercasedInResult() {
-        FulfillAttemptResult r = service.fulfillSingleOrder("stri", "", "Delivered");
-        assertEquals("STRI", r.getAccountCode());
+    void fulfillSingleOrder_trackingAccountUppercasedInResult() {
+        FulfillAttemptResult r = service.fulfillSingleOrder("striker store", "", "Delivered");
+        // Result echoes labels/tracking account_code as uppercase; Shopify map keys are separate (e.g. strikerstore).
+        assertEquals("STRIKER STORE", r.getAccountCode());
     }
 
     @Test
@@ -199,7 +201,7 @@ class OrderTrackingBulkFulfillmentServiceTest {
 
     @Test
     void fulfillSingleOrder_ineligibleStatus_returnsError() {
-        FulfillAttemptResult r = service.fulfillSingleOrder("STRI", "#1", "MYSTERY");
+        FulfillAttemptResult r = service.fulfillSingleOrder(BrandAccountKey.STRIKER_STORE, "#1", "MYSTERY");
         assertFalse(r.isSuccess());
         assertTrue(r.getMessage().contains("does not map"));
     }

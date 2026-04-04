@@ -8,7 +8,14 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class UnfulfilledShopifyOrderItem {
 
+    /**
+     * Carrier / DB account ( {@code order_tracking.account_code}, {@code labels.account_code} ).
+     */
     private String accountCode;
+    /**
+     * Shopify config key ({@code shopify.accounts} / {@code store_shopify_connections.brand_name}); when blank, callers may fall back to {@link #accountCode}.
+     */
+    private String shopifyBrandName;
     /** {@code order_id} from {@code order_tracking} (latest row). */
     private String orderId;
     /** Shopify order {@code name} (e.g. {@code #1001}). */
@@ -31,6 +38,14 @@ public class UnfulfilledShopifyOrderItem {
 
     public void setAccountCode(String accountCode) {
         this.accountCode = accountCode;
+    }
+
+    public String getShopifyBrandName() {
+        return shopifyBrandName;
+    }
+
+    public void setShopifyBrandName(String shopifyBrandName) {
+        this.shopifyBrandName = shopifyBrandName;
     }
 
     public String getOrderId() {

@@ -355,7 +355,7 @@ public class ShopifyService {
      * Get shipping phone number for an order (for post-delivered follow-up etc.).
      * Uses REST API to fetch order and read shipping_address.phone.
      *
-     * @param accountCode Account code (STRI, DRIB, etc.)
+     * @param accountCode Account code (e.g. STRIKER STORE, PLX001)
      * @param orderName   Order name/number (e.g. "254120" or "#254120")
      * @return Phone string, or null if not found
      */
@@ -812,7 +812,7 @@ public class ShopifyService {
      * Get product onlineStoreUrl by product ID via GraphQL (for abandoned cart template variable).
      * Uses query GetProductById with id: gid://shopify/Product/{productId}.
      *
-     * @param accountCode Account code (STRI, DRIB, etc.)
+     * @param accountCode Account code (e.g. STRIKER STORE, PLX001)
      * @param productId   Shopify product ID (numeric)
      * @return onlineStoreUrl string, or null if not found or on error
      */
@@ -1642,7 +1642,7 @@ public class ShopifyService {
      * {@linkplain #normalizeShopifyOrderNameKey(String) normalized} order {@code name} to the node
      * ({@code id}, {@code name}, {@code createdAt}, {@code displayFulfillmentStatus}, …).
      *
-     * @param accountCode       STRI / DRIB / …
+     * @param accountCode       shopify.accounts map key (e.g. STRIKER STORE)
      * @param ordersSearchQuery Shopify order search string (same as GraphQL {@code query} argument)
      * @param maxTotalOrders    safety cap across all pages (stops pagination when reached)
      */
@@ -1795,5 +1795,197 @@ public class ShopifyService {
             log.debug("parseOrdersPageInfo failed: {}", e.getMessage());
         }
         return Map.of();
+    }
+
+    /**
+     * Variant order names to try against Shopify (handles payloads like {@code ORD-12345} vs store name
+     * {@code #12345}).
+     */
+    private static List<String> shopifyOrderLookupNames(String orderId) {
+        List<String> out = new ArrayList<>();
+        if (orderId == null || orderId.isBlank()) {
+            return out;
+        }
+        String t = orderId.trim();
+        out.add(t);
+        if (t.regionMatches(true, 0, "ORD-", 0, 4)) {
+            String rest = t.substring(4).trim();
+            if (!rest.isEmpty()) {
+                if (!out.contains(rest)) {
+                    out.add(rest);
+                }
+                String hash = "#" + rest;
+                if (!out.contains(hash)) {
+                    out.add(hash);
+                }
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Resolve numeric Shopify order id via GraphQL only ({@link #getOrderWithFulfillmentsGraphQL}), trying
+     * {@link #shopifyOrderLookupNames(String)} variants (e.g. {@code ORD-12345} vs {@code #12345}).
+     */
+    public Long resolveShopifyOrderId(String accountCode, String orderName) {
+        if (accountCode == null || accountCode.isEmpty() || orderName == null || orderName.isEmpty()) {
+            return null;
+        }
+        if (shopifyProperties.getAccountByCode(accountCode) == null) {
+            log.warn("Shopify account not found for code: {}", accountCode);
+            return null;
+        }
+        for (String candidate : shopifyOrderLookupNames(orderName)) {
+            Map<String, Object> orderData = getOrderWithFulfillmentsGraphQL(accountCode, candidate);
+            if (orderData != null) {
+                Object idObj = orderData.get("id");
+                if (idObj != null) {
+                    String gid = idObj.toString();
+                    if (gid.startsWith("gid://shopify/Order/")) {
+                        return Long.parseLong(gid.substring("gid://shopify/Order/".length()));
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * From a GraphQL order node ({@code fulfillments { id trackingInfo { number } }}), pick fulfillment numeric id:
+     * match {@code awbHint} to {@code trackingInfo.number} when set, else use the last fulfillment in the list.
+     */
+    @SuppressWarnings("unchecked")
+    private Long getFulfillmentNumericIdFromGraphQLOrderNode(Map<String, Object> orderNode, String awbHint) {
+        if (orderNode == null) {
+            return null;
+        }
+        Object fulObj = orderNode.get("fulfillments");
+        if (!(fulObj instanceof List)) {
+            return null;
+        }
+        List<?> fulfillments = (List<?>) fulObj;
+        if (fulfillments.isEmpty()) {
+            return null;
+        }
+
+        String needle = awbHint != null ? awbHint.trim() : "";
+        if (!needle.isEmpty()) {
+            for (Object o : fulfillments) {
+                if (!(o instanceof Map)) {
+                    continue;
+                }
+                Map<String, Object> fm = (Map<String, Object>) o;
+                if (graphQlFulfillmentTrackingMatchesAwb(fm, needle)) {
+                    return parseNumericIdFromGid(fm.get("id") != null ? fm.get("id").toString() : null,
+                            "gid://shopify/Fulfillment/");
+                }
+            }
+            // No tracking match: same as previous REST behavior — use most recent fulfillment in the list
+        }
+
+        Object last = fulfillments.get(fulfillments.size() - 1);
+        if (last instanceof Map) {
+            Object idObj = ((Map<String, Object>) last).get("id");
+            return parseNumericIdFromGid(idObj != null ? idObj.toString() : null, "gid://shopify/Fulfillment/");
+        }
+        return null;
+    }
+
+    private static boolean graphQlFulfillmentTrackingMatchesAwb(Map<String, Object> fulfillmentMap, String awb) {
+        Object ti = fulfillmentMap.get("trackingInfo");
+        if (ti instanceof List) {
+            for (Object x : (List<?>) ti) {
+                if (x instanceof Map) {
+                    Object n = ((Map<?, ?>) x).get("number");
+                    if (n != null && awb.equals(n.toString().trim())) {
+                        return true;
+                    }
+                }
+            }
+        } else if (ti instanceof Map) {
+            Object n = ((Map<?, ?>) ti).get("number");
+            if (n != null && awb.equals(n.toString().trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Cancel a fulfillment in Shopify (GraphQL {@code fulfillmentCancel}).
+     *
+     * @param accountCode            shopify.accounts key (e.g. PLX001, STRIKER STORE)
+     * @param fulfillmentNumericId   numeric id (same as suffix of {@code gid://shopify/Fulfillment/...})
+     */
+    @SuppressWarnings("unchecked")
+    public boolean cancelFulfillmentGraphQL(String accountCode, Long fulfillmentNumericId) {
+        if (accountCode == null || accountCode.isEmpty() || fulfillmentNumericId == null) {
+            return false;
+        }
+        ShopifyAccount account = shopifyProperties.getAccountByCode(accountCode);
+        if (account == null) {
+            log.warn("Shopify account not found for fulfillment cancel: {}", accountCode);
+            return false;
+        }
+
+        String mutation = "mutation fulfillmentCancel($id: ID!) { fulfillmentCancel(id: $id) { fulfillment { id status } userErrors { field message } } }";
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("id", "gid://shopify/Fulfillment/" + fulfillmentNumericId);
+
+        Map<String, Object> response = callGraphQL(account, mutation, variables, "Fulfillment Cancel");
+        if (response == null) {
+            return false;
+        }
+        try {
+            Object dataObj = response.get("data");
+            if (!(dataObj instanceof Map)) {
+                return false;
+            }
+            Map<String, Object> data = (Map<String, Object>) dataObj;
+            Object fcObj = data.get("fulfillmentCancel");
+            if (!(fcObj instanceof Map)) {
+                return false;
+            }
+            Map<String, Object> fc = (Map<String, Object>) fcObj;
+            List<?> userErrors = (List<?>) fc.get("userErrors");
+            if (userErrors != null && !userErrors.isEmpty()) {
+                log.warn("fulfillmentCancel userErrors: {}", userErrors);
+                return false;
+            }
+            Object ful = fc.get("fulfillment");
+            return ful instanceof Map;
+        } catch (Exception e) {
+            log.error("Failed to parse fulfillmentCancel response: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Loads the order with fulfillments via GraphQL only, selects fulfillment (AWB match on {@code trackingInfo.number}
+     * when provided, else last fulfillment), then {@link #cancelFulfillmentGraphQL}.
+     */
+    public boolean cancelFulfillmentForOrder(String accountCode, String orderName, String awbHint) {
+        if (accountCode == null || accountCode.isEmpty() || orderName == null || orderName.isEmpty()) {
+            return false;
+        }
+        if (shopifyProperties.getAccountByCode(accountCode) == null) {
+            return false;
+        }
+        for (String candidate : shopifyOrderLookupNames(orderName)) {
+            Map<String, Object> orderData = getOrderWithFulfillmentsGraphQL(accountCode, candidate);
+            if (orderData == null) {
+                continue;
+            }
+            Long fulfillmentId = getFulfillmentNumericIdFromGraphQLOrderNode(orderData, awbHint);
+            if (fulfillmentId == null) {
+                log.warn("cancelFulfillmentForOrder: order resolved for name variant {} but no fulfillment (account: {})",
+                        candidate, accountCode);
+                return false;
+            }
+            return cancelFulfillmentGraphQL(accountCode, fulfillmentId);
+        }
+        log.warn("cancelFulfillmentForOrder: could not resolve order via GraphQL for {} (account: {})", orderName,
+                accountCode);
+        return false;
     }
 }

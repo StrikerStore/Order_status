@@ -16,7 +16,8 @@ import java.util.List;
 
 /**
  * Service for checking and adding message status in the database.
- * Used for deduplication before sending Botspace messages.
+ * {@link #hasAnyStatus} / {@link #hasStatus} and insert idempotency use {@code order_id} + {@code brand_name} only
+ * ({@code account_code} is stored but not part of dedup). NULL/blank brand aligned with SQL COALESCE.
  */
 @Service
 public class CustomerMessageTrackingService {
@@ -26,40 +27,48 @@ public class CustomerMessageTrackingService {
     @Autowired
     private CustomerMessageTrackingRepository repository;
 
-    /**
-     * Check if the order already has any of the given message statuses in the database.
-     * Used for deduplication (e.g. skip if sent_inTransit OR failed_inTransit exists).
-     */
-    public boolean hasAnyStatus(String orderId, String accountCode, List<String> messageStatuses) {
-        if (orderId == null || accountCode == null || messageStatuses == null || messageStatuses.isEmpty()) {
-            return false;
+    private static String normalizeBrandKey(String brandName) {
+        if (brandName == null || brandName.isBlank()) {
+            return "";
         }
-        return repository.existsByOrderIdAndAccountCodeAndMessageStatusIn(orderId, accountCode, messageStatuses);
+        return brandName.trim();
+    }
+
+    private static String normalizeAccountKey(String accountCode) {
+        return accountCode != null ? accountCode.trim() : "";
     }
 
     /**
-     * Check if the order already has this message status in the database.
+     * Whether any row exists for this order + brand (from request) + one of the statuses.
      */
-    public boolean hasStatus(String orderId, String accountCode, String messageStatus) {
-        if (orderId == null || accountCode == null || messageStatus == null) {
+    public boolean hasAnyStatus(String orderId, String brandName, List<String> messageStatuses) {
+        if (orderId == null || orderId.isBlank() || messageStatuses == null || messageStatuses.isEmpty()) {
             return false;
         }
-        return repository.existsByOrderIdAndAccountCodeAndMessageStatus(orderId, accountCode, messageStatus);
+        String brand = normalizeBrandKey(brandName);
+        return repository.countByOrderBrandAndMessageStatusIn(orderId, brand, messageStatuses) > 0;
     }
 
-    /**
-     * Add message status for the order. Idempotent - does not fail if record already exists.
-     *
-     * @return true if added or already existed, false on error
-     */
+    public boolean hasStatus(String orderId, String brandName, String messageStatus) {
+        if (orderId == null || orderId.isBlank() || messageStatus == null || messageStatus.isBlank()) {
+            return false;
+        }
+        String brand = normalizeBrandKey(brandName);
+        return repository.countByOrderBrandAndMessageStatus(orderId, brand, messageStatus) > 0;
+    }
+
     @Transactional
     public boolean addStatus(String orderId, String accountCode, String messageStatus) {
+        return addStatus(orderId, accountCode, messageStatus, null);
+    }
+
+    /**
+     * Persists {@code account_code} and optional {@code brand_name}; duplicate check is order + brand + status only.
+     */
+    @Transactional
+    public boolean addStatus(String orderId, String accountCode, String messageStatus, String brandName) {
         if (orderId == null || orderId.isEmpty()) {
             log.warn("Cannot add message status: order ID is empty");
-            return false;
-        }
-        if (accountCode == null || accountCode.isEmpty()) {
-            log.warn("Cannot add message status: account code is empty");
             return false;
         }
         if (messageStatus == null || messageStatus.isEmpty()) {
@@ -67,30 +76,35 @@ public class CustomerMessageTrackingService {
             return false;
         }
 
+        String acct = normalizeAccountKey(accountCode);
+        String brandKey = normalizeBrandKey(brandName);
+        if (acct.isEmpty() && brandKey.isEmpty()) {
+            log.warn("Cannot add message status: account_code and brand_name are both empty");
+            return false;
+        }
+
         try {
-            if (repository.existsByOrderIdAndAccountCodeAndMessageStatus(orderId, accountCode, messageStatus)) {
-                log.debug("Message status {} already exists for order {} (account: {}), skipping insert",
-                        messageStatus, orderId, accountCode);
+            if (repository.countByOrderBrandAndMessageStatus(orderId, brandKey, messageStatus) > 0) {
+                log.debug("Message status {} already exists for order {} (brand key: {}), skipping insert",
+                        messageStatus, orderId, brandKey.isEmpty() ? "—" : brandKey);
                 return true;
             }
 
-            CustomerMessageTracking record = new CustomerMessageTracking(orderId, accountCode, messageStatus);
+            String brandStored = brandKey.isEmpty() ? null : brandKey;
+            CustomerMessageTracking record = new CustomerMessageTracking(orderId, acct, messageStatus, brandStored);
             repository.save(record);
-            log.info("Added message status {} for order {} (account: {})", messageStatus, orderId, accountCode);
+            log.info("Added message status {} for order {} (account_code: {}, brand_name: {})", messageStatus, orderId,
+                    acct.isEmpty() ? "—" : acct, brandStored != null ? brandStored : "—");
             return true;
         } catch (Exception e) {
             log.error("Failed to add message status {} for order {} (account: {}): {}",
-                    messageStatus, orderId, accountCode, e.getMessage(), e);
+                    messageStatus, orderId, acct, e.getMessage(), e);
             return false;
         }
     }
 
     private static final String SENT_DELIVERED = "sent_delivered";
 
-    /**
-     * Find all orders that received the "delivered" message yesterday (by created_at).
-     * Used by post-delivered follow-up flow.
-     */
     public List<CustomerMessageTracking> findSentDeliveredYesterday() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
         ZoneId zone = ZoneId.systemDefault();
@@ -99,10 +113,6 @@ public class CustomerMessageTrackingService {
         return repository.findByMessageStatusAndCreatedAtBetween(SENT_DELIVERED, start, end);
     }
 
-    /**
-     * Find order_id, shipping_phone, account_code from customer_info joined with customer_message_tracking
-     * for sent_delivered records where DATE(created_at) = yesterday (DB date). Used by post-delivered follow-up.
-     */
     public List<OrderPhoneProjection> findOrderIdAndPhoneForSentDeliveredYesterday() {
         return repository.findOrderIdAndPhoneForSentDeliveredYesterday();
     }
