@@ -44,6 +44,32 @@ class CustomerMessageTrackingServiceTest {
     }
 
     @Test
+    void hasAnyStatusToday_delegatesToRepository() {
+        when(repository.countByOrderBrandAndMessageStatusInToday("1", "BR", List.of("sent_abandonedCart"))).thenReturn(1L);
+        assertTrue(service.hasAnyStatusToday("1", "BR", List.of("sent_abandonedCart")));
+    }
+
+    @Test
+    void hasAnyStatusToday_emptyOrderId_returnsFalse() {
+        assertFalse(service.hasAnyStatusToday("", "BR", List.of("sent_abandonedCart")));
+    }
+
+    @Test
+    void hasAnyStatusToday_nullOrderId_returnsFalse() {
+        assertFalse(service.hasAnyStatusToday(null, "BR", List.of("sent_abandonedCart")));
+    }
+
+    @Test
+    void hasAnyStatusToday_nullStatuses_returnsFalse() {
+        assertFalse(service.hasAnyStatusToday("1", "BR", null));
+    }
+
+    @Test
+    void hasAnyStatusToday_emptyStatuses_returnsFalse() {
+        assertFalse(service.hasAnyStatusToday("1", "BR", List.of()));
+    }
+
+    @Test
     void hasStatus_null_returnsFalse() {
         assertFalse(service.hasStatus("1", "B", null));
     }

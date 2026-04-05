@@ -10,6 +10,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -23,8 +24,15 @@ public class AbandonedCartFlowService {
 
     private static final Logger log = LoggerFactory.getLogger(AbandonedCartFlowService.class);
 
+    /** Skip a second Botspace send the same calendar day (DB {@code CURDATE()}) for this phone + brand. */
+    private static final List<String> ABANDONED_CART_DEDUP_STATUSES = Arrays.asList("sent_abandonedCart",
+            "failed_abandonedCart");
+
     @Autowired
     private BotspaceService botspaceService;
+
+    @Autowired
+    private CustomerMessageTrackingService customerMessageTrackingService;
 
     @Autowired
     private com.shipway.ordertracking.config.BotspaceProperties botspaceProperties;
@@ -73,15 +81,11 @@ public class AbandonedCartFlowService {
         // First item image URL for mediaVariable and cards (Botspace template expects these)
         String firstItemImgUrl = getFirstItemImgUrl(attrs);
 
-        // Cart ID for tracking (prod uses cart_id, not shopifyCartToken)
-        String cartToken = attrs.getCartId();
-
         // Schedule async task with 1-minute delay
-        String finalCartToken = cartToken;
         String finalFirstItemImgUrl = firstItemImgUrl;
         CompletableFuture.runAsync(() -> {
             try {
-                sendAbandonedCartNotification(brandName, customerPhone, templateVariables, finalCartToken, finalFirstItemImgUrl);
+                sendAbandonedCartNotification(brandName, customerPhone, templateVariables, finalFirstItemImgUrl);
             } catch (Exception e) {
                 log.error("Error in abandoned cart notification task for phone: {}", customerPhone, e);
             }
@@ -109,10 +113,13 @@ public class AbandonedCartFlowService {
     /**
      * Send abandoned cart notification via Botspace (called after 1-minute delay).
      * Matches Botspace API: variables [first_name, recovery_url, product_id], mediaVariable and cards from first item img_url.
+     * <p>
+     * {@code customer_message_tracking.order_id} uses the formatted customer phone (not cart id) so rows align with the
+     * recipient and cart_id gaps do not break tracking.
      */
     @Async
     private void sendAbandonedCartNotification(String brandName, String phone, List<String> templateVariables,
-            String cartToken, String firstItemImgUrl) {
+            String firstItemImgUrl) {
         try {
             log.info("Sending abandoned cart notification for phone: {} (brand: {})", phone, brandName);
 
@@ -123,9 +130,25 @@ public class AbandonedCartFlowService {
             }
 
             String formattedPhone = PhoneNumberUtil.formatPhoneNumber(phone);
+            String orderIdForTracking = !formattedPhone.isEmpty()
+                    ? formattedPhone
+                    : (phone != null ? phone.trim() : "");
+            if (orderIdForTracking.isEmpty()) {
+                log.warn("Abandoned cart: cannot build order_id for message tracking (invalid phone), brand: {}", brandName);
+                return;
+            }
+            String phoneForBotspace = !formattedPhone.isEmpty() ? formattedPhone : orderIdForTracking;
+
+            String brandForDedup = brandName != null ? brandName.trim() : "";
+            if (customerMessageTrackingService.hasAnyStatusToday(orderIdForTracking, brandForDedup,
+                    ABANDONED_CART_DEDUP_STATUSES)) {
+                log.info("Abandoned cart: already sent or failed today for order_id={} brand={}, skipping Botspace",
+                        orderIdForTracking, brandForDedup);
+                return;
+            }
 
             BotspaceMessageRequest request = new BotspaceMessageRequest();
-            request.setPhone(formattedPhone);
+            request.setPhone(phoneForBotspace);
             request.setTemplateId(templateId);
             request.setVariables(templateVariables);
 
@@ -135,17 +158,17 @@ public class AbandonedCartFlowService {
             }
 
             String trackingAccountCode = storeShopifyBrandAccountService.findTrackingAccountCode(brandName).orElse(null);
-            boolean sent = botspaceService.sendTemplateMessage(brandName, request, cartToken,
+            boolean sent = botspaceService.sendTemplateMessage(brandName, request, orderIdForTracking,
                     "sent_abandonedCart", "failed_abandonedCart",
                     trackingAccountCode,
                     brandName);
 
             if (sent) {
-                log.info("✅ Abandoned cart notification sent successfully for phone: {} (brand: {})",
-                        formattedPhone, brandName);
+                log.info("✅ Abandoned cart notification sent successfully for phone: {} (brand: {}, tracking order_id: {})",
+                        phoneForBotspace, brandName, orderIdForTracking);
             } else {
                 log.error("❌ Failed to send abandoned cart notification for phone: {} (brand: {})",
-                        formattedPhone, brandName);
+                        phoneForBotspace, brandName);
             }
 
         } catch (Exception e) {

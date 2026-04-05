@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
@@ -35,6 +36,9 @@ class AbandonedCartFlowServiceTest {
     @Mock
     private StoreShopifyBrandAccountService storeShopifyBrandAccountService;
 
+    @Mock
+    private CustomerMessageTrackingService customerMessageTrackingService;
+
     @InjectMocks
     private AbandonedCartFlowService service;
 
@@ -42,6 +46,8 @@ class AbandonedCartFlowServiceTest {
     void clearTestPhone() {
         ReflectionTestUtils.setField(service, "abandonedCartTestPhone", "");
         lenient().when(storeShopifyBrandAccountService.findTrackingAccountCode(anyString())).thenReturn(Optional.empty());
+        lenient().when(customerMessageTrackingService.hasAnyStatusToday(anyString(), anyString(), anyList()))
+                .thenReturn(false);
     }
 
     @Test

@@ -34,6 +34,20 @@ public interface CustomerMessageTrackingRepository extends JpaRepository<Custome
     long countByOrderBrandAndMessageStatusIn(@Param("orderId") String orderId,
             @Param("brandName") String brandName, @Param("statuses") List<String> statuses);
 
+    /**
+     * Same as {@link #countByOrderBrandAndMessageStatusIn} but only rows whose {@code created_at} date equals
+     * {@code CURDATE()} in the database session (calendar day dedup for abandoned cart, etc.).
+     */
+    @Query(value = """
+            SELECT COUNT(*) FROM customer_message_tracking c
+            WHERE c.order_id = :orderId
+            AND COALESCE(TRIM(c.brand_name), '') = COALESCE(TRIM(:brandName), '')
+            AND c.message_status IN (:statuses)
+            AND DATE(c.created_at) = CURDATE()
+            """, nativeQuery = true)
+    long countByOrderBrandAndMessageStatusInToday(@Param("orderId") String orderId,
+            @Param("brandName") String brandName, @Param("statuses") List<String> statuses);
+
     /** Find records by status and created_at in range (e.g. yesterday for post-delivered follow-up). */
     List<CustomerMessageTracking> findByMessageStatusAndCreatedAtBetween(String messageStatus, Instant start, Instant end);
 

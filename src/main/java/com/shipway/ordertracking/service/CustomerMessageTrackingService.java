@@ -49,6 +49,18 @@ public class CustomerMessageTrackingService {
         return repository.countByOrderBrandAndMessageStatusIn(orderId, brand, messageStatuses) > 0;
     }
 
+    /**
+     * Whether any row exists for this order + brand + one of the statuses with {@code created_at} on the DB calendar
+     * {@code CURDATE()} (used to avoid duplicate Botspace sends the same day).
+     */
+    public boolean hasAnyStatusToday(String orderId, String brandName, List<String> messageStatuses) {
+        if (orderId == null || orderId.isBlank() || messageStatuses == null || messageStatuses.isEmpty()) {
+            return false;
+        }
+        String brand = normalizeBrandKey(brandName);
+        return repository.countByOrderBrandAndMessageStatusInToday(orderId, brand, messageStatuses) > 0;
+    }
+
     public boolean hasStatus(String orderId, String brandName, String messageStatus) {
         if (orderId == null || orderId.isBlank() || messageStatus == null || messageStatus.isBlank()) {
             return false;

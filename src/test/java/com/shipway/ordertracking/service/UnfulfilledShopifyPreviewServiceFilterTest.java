@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -67,7 +68,8 @@ class UnfulfilledShopifyPreviewServiceFilterTest {
         UnfulfilledShopifyPreviewResponse r = service.buildPreview("strikerstore", 200);
 
         verify(shopifyService).loadOrderNodesBySearchQueryPaged(eq("STRIKER STORE"), eq("fulfillment_status:unfulfilled"), eq(200));
-        assertEquals(1, r.getCounts().get("accountsProcessed"));
+        assertNotNull(r.getCounts().get("accountsProcessed"), "accountsProcessed should be set");
+        assertEquals(1, r.getCounts().get("accountsProcessed").intValue());
     }
 
     @Test
@@ -84,6 +86,7 @@ class UnfulfilledShopifyPreviewServiceFilterTest {
         UnfulfilledShopifyPreviewResponse r = service.buildPreview("plx001", 200);
 
         verify(shopifyService).loadOrderNodesBySearchQueryPaged(eq("STRIKER STORE"), anyString(), anyInt());
-        assertEquals(1, r.getCounts().get("accountsProcessed"));
+        assertNotNull(r.getCounts().get("accountsProcessed"), "accountsProcessed should be set");
+        assertEquals(1, r.getCounts().get("accountsProcessed").intValue());
     }
 }
