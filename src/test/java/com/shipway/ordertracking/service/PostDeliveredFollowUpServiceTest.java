@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -53,7 +54,7 @@ class PostDeliveredFollowUpServiceTest {
         service.sendFollowUpToYesterdayDelivered();
 
         verify(botspaceService, never()).sendTemplateMessage(anyString(), any(BotspaceMessageRequest.class), anyString(),
-                anyString(), anyString());
+                anyString(), anyString(), any(), any());
     }
 
     @Test
@@ -65,19 +66,21 @@ class PostDeliveredFollowUpServiceTest {
         when(row.getShippingPhone()).thenReturn("+919876543210");
 
         when(customerMessageTrackingService.findOrderIdAndPhoneForSentDeliveredYesterday()).thenReturn(List.of(row));
-        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq(""), anyList())).thenReturn(false);
+        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq(BrandAccountKey.STRIKER_STORE), anyList()))
+                .thenReturn(false);
 
         BotspaceAccount ba = new BotspaceAccount();
         ba.setPostDeliveredFollowUpTemplateId("tpl_followup");
         when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
         when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(BotspaceMessageRequest.class), eq("#1001"),
-                eq("sent_postDeliveredFollowUp"), eq("failed_postDeliveredFollowUp"))).thenReturn(true);
+                eq("sent_postDeliveredFollowUp"), eq("failed_postDeliveredFollowUp"), eq(BrandAccountKey.STRIKER_STORE),
+                isNull())).thenReturn(true);
 
         service.sendFollowUpToYesterdayDelivered();
 
         verify(botspaceService).sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(BotspaceMessageRequest.class), eq("#1001"),
-                eq("sent_postDeliveredFollowUp"), eq("failed_postDeliveredFollowUp"));
+                eq("sent_postDeliveredFollowUp"), eq("failed_postDeliveredFollowUp"), eq(BrandAccountKey.STRIKER_STORE), isNull());
     }
 
     @Test
@@ -88,11 +91,12 @@ class PostDeliveredFollowUpServiceTest {
         when(row.getBrandName()).thenReturn(null);
 
         when(customerMessageTrackingService.findOrderIdAndPhoneForSentDeliveredYesterday()).thenReturn(List.of(row));
-        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq(""), anyList())).thenReturn(true);
+        when(customerMessageTrackingService.hasAnyStatus(eq("#1001"), eq(BrandAccountKey.STRIKER_STORE), anyList()))
+                .thenReturn(true);
 
         service.sendFollowUpToYesterdayDelivered();
 
         verify(botspaceService, never()).sendTemplateMessage(anyString(), any(BotspaceMessageRequest.class), anyString(),
-                anyString(), anyString());
+                anyString(), anyString(), any(), any());
     }
 }

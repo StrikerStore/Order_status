@@ -322,14 +322,19 @@ public class UnfulfilledShopifyPreviewService {
                     .toList();
         }
         String f = filter.trim();
+        String fNorm = StoreShopifyBrandAccountService.normalizeBrandKey(f);
         for (StoreShopifyConnection c : all) {
-            if (c.getBrandName() != null && c.getBrandName().trim().equalsIgnoreCase(f)) {
-                return List.of(new ShopifyTrackingPair(c.getBrandName().trim(), c.getAccountCode().trim()));
+            if (c.getBrandName() != null && !c.getBrandName().isBlank()) {
+                if (fNorm.equals(StoreShopifyBrandAccountService.normalizeBrandKey(c.getBrandName().trim()))) {
+                    return List.of(new ShopifyTrackingPair(c.getBrandName().trim(), c.getAccountCode().trim()));
+                }
             }
         }
         for (StoreShopifyConnection c : all) {
-            if (c.getAccountCode() != null && c.getAccountCode().trim().equalsIgnoreCase(f)) {
-                return List.of(new ShopifyTrackingPair(c.getBrandName().trim(), c.getAccountCode().trim()));
+            if (c.getAccountCode() != null && !c.getAccountCode().isBlank()) {
+                if (fNorm.equals(StoreShopifyBrandAccountService.normalizeBrandKey(c.getAccountCode().trim()))) {
+                    return List.of(new ShopifyTrackingPair(c.getBrandName().trim(), c.getAccountCode().trim()));
+                }
             }
         }
         log.warn("store_shopify_connections has {} row(s) but none matched filter '{}'", all.size(), filter);

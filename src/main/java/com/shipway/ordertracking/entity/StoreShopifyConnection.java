@@ -3,7 +3,7 @@ package com.shipway.ordertracking.entity;
 import jakarta.persistence.*;
 
 /**
- * Maps Shopify store key ({@code brand_name} = {@code shopify.accounts} map key, e.g. STRIKER STORE)
+ * Maps Shopify store key ({@code brand_name} = {@code shopify.accounts} map key, e.g. {@code strikerstore} or legacy {@code STRIKER STORE} — resolved via normalized match)
  * to carrier / DB {@code account_code} used in {@code order_tracking} and {@code labels}.
  * <p>
  * Create table when using validate mode, for example:

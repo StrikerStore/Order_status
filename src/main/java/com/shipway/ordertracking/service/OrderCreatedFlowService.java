@@ -34,6 +34,9 @@ public class OrderCreatedFlowService {
     @Autowired
     private BotspaceProperties botspaceProperties;
 
+    @Autowired
+    private StoreShopifyBrandAccountService storeShopifyBrandAccountService;
+
     /** When set (e.g. for local testing), order-created notifications go to this number instead of the customer. */
     @Value("${order.created.test.phone:}")
     private String orderCreatedTestPhone;
@@ -45,7 +48,7 @@ public class OrderCreatedFlowService {
     public boolean processShopifyOrderCreated(ShopifyOrderCreatedWebhook webhook, String shopDomain) {
         log.info("Processing Shopify order created flow for order: {}", webhook.getName());
 
-        // Resolve brand key (e.g. STRIKER STORE / DRIBBLE STORE) from shop domain to match shopify.accounts / botspace.accounts
+        // Resolve Shopify / Botspace map key (e.g. strikerstore) from shop domain
         String brandName = extractBrandNameFromShopDomain(shopDomain);
         if (brandName == null || brandName.isEmpty()) {
             log.warn("Cannot determine brand name from shop domain: {}", shopDomain);
@@ -91,10 +94,14 @@ public class OrderCreatedFlowService {
         request.setTemplateId(templateId);
         request.setVariables(variables);
 
-        // Send template message via Botspace (order_id in table = order name)
+        // customer_message_tracking: account_code from store_shopify_connections; brand_name = Shopify map key
+        String trackingAccountCode = storeShopifyBrandAccountService.findTrackingAccountCode(brandName).orElse(null);
+
         boolean sent = botspaceService.sendTemplateMessage(brandName, request, orderName,
                 "sent_orderCreated",
-                "failed_orderCreated");
+                "failed_orderCreated",
+                trackingAccountCode,
+                brandName);
 
         if (sent) {
             log.info("✅ Order created notification sent successfully for order: {} to phone: {}",
@@ -108,7 +115,7 @@ public class OrderCreatedFlowService {
     }
 
     /**
-     * Resolve configured brand key from Shopify shop domain (e.g. seq5t1-mz.myshopify.com → STRIKER STORE).
+     * Resolve configured brand key from Shopify shop domain (e.g. seq5t1-mz.myshopify.com → strikerstore).
      */
     private String extractBrandNameFromShopDomain(String shopDomain) {
         if (shopDomain == null || shopDomain.isEmpty()) {

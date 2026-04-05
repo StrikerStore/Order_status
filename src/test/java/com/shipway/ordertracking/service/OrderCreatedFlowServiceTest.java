@@ -17,12 +17,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,12 +44,16 @@ class OrderCreatedFlowServiceTest {
     @Mock
     private BotspaceProperties botspaceProperties;
 
+    @Mock
+    private StoreShopifyBrandAccountService storeShopifyBrandAccountService;
+
     @InjectMocks
     private OrderCreatedFlowService service;
 
     @BeforeEach
     void clearTestPhoneOverride() {
         ReflectionTestUtils.setField(service, "orderCreatedTestPhone", "");
+        lenient().when(storeShopifyBrandAccountService.findTrackingAccountCode(anyString())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -85,8 +92,12 @@ class OrderCreatedFlowServiceTest {
         ba.setOrderCreatedTemplateId("tpl_order_created");
         when(botspaceProperties.getAccountByCode(BrandAccountKey.STRIKER_STORE)).thenReturn(ba);
 
+        when(storeShopifyBrandAccountService.findTrackingAccountCode(BrandAccountKey.STRIKER_STORE))
+                .thenReturn(Optional.of("PLX_STRIKER"));
+
         when(botspaceService.sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), any(BotspaceMessageRequest.class), eq("#1001"),
-                eq("sent_orderCreated"), eq("failed_orderCreated"))).thenReturn(true);
+                eq("sent_orderCreated"), eq("failed_orderCreated"), eq("PLX_STRIKER"), eq(BrandAccountKey.STRIKER_STORE)))
+                .thenReturn(true);
 
         ShopifyOrderCreatedWebhook w = new ShopifyOrderCreatedWebhook();
         w.setName("#1001");
@@ -96,7 +107,7 @@ class OrderCreatedFlowServiceTest {
 
         ArgumentCaptor<BotspaceMessageRequest> cap = ArgumentCaptor.forClass(BotspaceMessageRequest.class);
         verify(botspaceService).sendTemplateMessage(eq(BrandAccountKey.STRIKER_STORE), cap.capture(), eq("#1001"), eq("sent_orderCreated"),
-                eq("failed_orderCreated"));
+                eq("failed_orderCreated"), eq("PLX_STRIKER"), eq(BrandAccountKey.STRIKER_STORE));
         assertEquals("tpl_order_created", cap.getValue().getTemplateId());
     }
 

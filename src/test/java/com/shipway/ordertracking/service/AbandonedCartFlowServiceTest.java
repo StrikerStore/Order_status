@@ -12,9 +12,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -29,12 +32,16 @@ class AbandonedCartFlowServiceTest {
     @Mock
     private ShopifyService shopifyService;
 
+    @Mock
+    private StoreShopifyBrandAccountService storeShopifyBrandAccountService;
+
     @InjectMocks
     private AbandonedCartFlowService service;
 
     @BeforeEach
     void clearTestPhone() {
         ReflectionTestUtils.setField(service, "abandonedCartTestPhone", "");
+        lenient().when(storeShopifyBrandAccountService.findTrackingAccountCode(anyString())).thenReturn(Optional.empty());
     }
 
     @Test

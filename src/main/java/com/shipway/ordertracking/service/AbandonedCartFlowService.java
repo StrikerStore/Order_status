@@ -32,6 +32,9 @@ public class AbandonedCartFlowService {
     @Autowired
     private com.shipway.ordertracking.service.ShopifyService shopifyService;
 
+    @Autowired
+    private StoreShopifyBrandAccountService storeShopifyBrandAccountService;
+
     /** When set (e.g. for local testing), abandoned cart notifications go to this number instead of the customer. */
     @Value("${abandoned.cart.test.phone:}")
     private String abandonedCartTestPhone;
@@ -60,7 +63,7 @@ public class AbandonedCartFlowService {
             log.info("Using abandoned-cart test phone override");
         }
 
-        // Brand key (e.g. STRIKER STORE / DRIBBLE STORE) from landing_page_url or checkout_url
+        // Shopify / Botspace map key (e.g. strikerstore) from landing_page_url or checkout_url
         String brandName = extractBrandNameFromWebhook(webhook);
         log.info("Resolved brand name: {} for abandoned cart", brandName);
 
@@ -131,8 +134,11 @@ public class AbandonedCartFlowService {
                 request.setCards(List.of(new BotspaceMessageRequest.Card(firstItemImgUrl)));
             }
 
+            String trackingAccountCode = storeShopifyBrandAccountService.findTrackingAccountCode(brandName).orElse(null);
             boolean sent = botspaceService.sendTemplateMessage(brandName, request, cartToken,
-                    "sent_abandonedCart", "failed_abandonedCart");
+                    "sent_abandonedCart", "failed_abandonedCart",
+                    trackingAccountCode,
+                    brandName);
 
             if (sent) {
                 log.info("✅ Abandoned cart notification sent successfully for phone: {} (brand: {})",

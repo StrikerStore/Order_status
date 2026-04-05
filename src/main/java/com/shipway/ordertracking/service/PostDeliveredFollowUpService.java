@@ -59,9 +59,10 @@ public class PostDeliveredFollowUpService {
         int failed = 0;
         for (OrderPhoneProjection row : rows) {
             String orderId = row.getOrderId();
-            String accountCode = row.getAccountCode();
-            String brandName = row.getBrandName() != null ? row.getBrandName().trim() : "";
-            if (customerMessageTrackingService.hasAnyStatus(orderId, brandName, FOLLOW_UP_STATUSES)) {
+            String trackingAcct = row.getAccountCode() != null ? row.getAccountCode().trim() : "";
+            String brandKey = row.getBrandName() != null ? row.getBrandName().trim() : "";
+            String dedupeBrand = !brandKey.isEmpty() ? brandKey : trackingAcct;
+            if (customerMessageTrackingService.hasAnyStatus(orderId, dedupeBrand, FOLLOW_UP_STATUSES)) {
                 log.debug("Post-delivered follow-up: order {} already has follow-up status, skipping", orderId);
                 skipped++;
                 continue;
@@ -70,7 +71,8 @@ public class PostDeliveredFollowUpService {
                     ? postDeliveredFollowUpTestPhone
                     : row.getShippingPhone();
             if (phone == null || phone.isEmpty()) {
-                log.warn("Post-delivered follow-up: no shipping_phone for order {} (account: {}), skipping", orderId, accountCode);
+                log.warn("Post-delivered follow-up: no shipping_phone for order {} (tracking account: {}), skipping", orderId,
+                        trackingAcct);
                 failed++;
                 continue;
             }
@@ -79,13 +81,15 @@ public class PostDeliveredFollowUpService {
             }
             String formattedPhone = PhoneNumberUtil.formatPhoneNumber(phone);
             if (formattedPhone.isEmpty()) {
-                log.warn("Post-delivered follow-up: invalid phone for order {} (account: {}), skipping", orderId, accountCode);
+                log.warn("Post-delivered follow-up: invalid phone for order {} (tracking account: {}), skipping", orderId,
+                        trackingAcct);
                 failed++;
                 continue;
             }
-            String templateId = getTemplateIdForAccount(accountCode);
+            String botspaceKey = !brandKey.isEmpty() ? brandKey : trackingAcct;
+            String templateId = getTemplateIdForAccount(botspaceKey);
             if (templateId == null || templateId.isEmpty()) {
-                log.warn("Post-delivered follow-up: no template for account {}, skipping order {}", accountCode, orderId);
+                log.warn("Post-delivered follow-up: no template for Botspace key {}, skipping order {}", botspaceKey, orderId);
                 failed++;
                 continue;
             }
@@ -98,10 +102,13 @@ public class PostDeliveredFollowUpService {
             request.setVariables(variables);
             request.setMediaVariable(url);
             request.setCards(List.of(new BotspaceMessageRequest.Card(url)));
-            boolean ok = botspaceService.sendTemplateMessage(accountCode, request, orderId, "sent_postDeliveredFollowUp", "failed_postDeliveredFollowUp");
+            boolean ok = botspaceService.sendTemplateMessage(botspaceKey, request, orderId, "sent_postDeliveredFollowUp",
+                    "failed_postDeliveredFollowUp",
+                    trackingAcct.isEmpty() ? null : trackingAcct,
+                    brandKey.isEmpty() ? null : brandKey);
             if (ok) {
                 sent++;
-                log.info("Post-delivered follow-up sent for order {} (account: {})", orderId, accountCode);
+                log.info("Post-delivered follow-up sent for order {} (Botspace key: {})", orderId, botspaceKey);
             } else {
                 failed++;
             }
@@ -109,8 +116,8 @@ public class PostDeliveredFollowUpService {
         log.info("Post-delivered follow-up done: sent={}, skipped={}, failed={}", sent, skipped, failed);
     }
 
-    private String getTemplateIdForAccount(String accountCode) {
-        BotspaceAccount account = botspaceProperties.getAccountByCode(accountCode);
+    private String getTemplateIdForAccount(String botspaceAccountKey) {
+        BotspaceAccount account = botspaceProperties.getAccountByCode(botspaceAccountKey);
         return account != null ? account.getPostDeliveredFollowUpTemplateId() : null;
     }
 }
